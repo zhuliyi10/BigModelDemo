@@ -5,12 +5,15 @@
 - GET  /api/models     透传网关模型列表
 - POST /api/chat       通用流式问答
 - POST /api/a2ui/chat  A2UI 场景问答（注入 A2UI 系统提示词）
+- POST /api/agent/chat 出行助手问答（模型以工具调用方式调用高德服务）
 """
 
 import asyncio
+import json
 import os
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import httpx
 from dotenv import load_dotenv
@@ -47,6 +50,15 @@ app.add_middleware(
 @app.get('/api/health')
 async def health():
     return {'ok': True}
+
+
+@app.get('/api/amap/config')
+async def amap_config():
+    """前端高德 JS API 配置：配置后底图升级为交互式地图，未配置时前端回退静态图"""
+    return {
+        'jsKey': os.getenv('AMAP_JS_KEY', ''),
+        'jsSecret': os.getenv('AMAP_JS_SECURITY', ''),
+    }
 
 
 @app.get('/api/models')
@@ -125,6 +137,338 @@ updateComponents 完整示例（注意：components 必须包含一个根容器 
 - 界面文字使用中文，控件标签简洁明确。
 
 当用户消息以 "[A2UI_EVENT]" 开头时，表示用户刚在界面上完成操作，消息中包含界面提交的 JSON 数据：请基于数据直接给出简短的中文确认或处理结果，用普通文本（可用 Markdown）回复，不要再生成界面。"""
+
+
+# ---------- 出行助手模式：模型以工具调用（function calling）方式调用高德服务 ----------
+# 与「千问 × 高德」同款三层结构：
+# 模型只决定"何时调用、传什么参数"；服务端真正请求高德 Web 服务 API 并回写 tool_result；
+# 前端根据服务端下发的结构化数据（含静态地图 URL）渲染路线卡片。
+
+AMAP_KEY = os.getenv('AMAP_KEY', '')
+AMAP_BASE = 'https://restapi.amap.com'
+MAX_TOOL_ROUNDS = 5
+
+# Anthropic tools 定义：模型据此自主规划调用链（先地理编码取坐标，再路线规划）
+AMAP_TOOLS = [
+    {
+        'name': 'maps_geo',
+        'description': '高德地理编码：把地址/地名（如"深圳北站"）转换为经纬度坐标。路线规划工具需要坐标作为入参，应先用本工具取坐标。',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'address': {'type': 'string', 'description': '结构化地址或地名'},
+                'city': {'type': 'string', 'description': '限定查询的城市名，如"深圳"，可省略'},
+            },
+            'required': ['address'],
+        },
+    },
+    {
+        'name': 'maps_text_search',
+        'description': '高德 POI 关键字搜索：按名称搜索餐厅、酒店、景点等兴趣点，返回名称、地址与坐标。',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'keywords': {'type': 'string', 'description': '搜索关键词'},
+                'city': {'type': 'string', 'description': '城市名，如"上海"'},
+            },
+            'required': ['keywords'],
+        },
+    },
+    {
+        'name': 'maps_around_search',
+        'description': '高德周边 POI 搜索：以某坐标为中心搜索餐厅、酒店、景点等兴趣点，返回名称、地址、坐标、评分、人均消费、距中心距离与照片。用户要"附近/周边/旁边"的推荐时，先用 maps_geo 取中心坐标再调用本工具。',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'center': {'type': 'string', 'description': '中心坐标 lng,lat（来自 maps_geo）'},
+                'keywords': {'type': 'string', 'description': '搜索关键词，如"餐厅"，可省略'},
+                'radius': {'type': 'integer', 'description': '搜索半径（米），默认 1000'},
+                'center_name': {'type': 'string', 'description': '中心地名，用于界面卡片展示'},
+            },
+            'required': ['center'],
+        },
+    },
+    {
+        'name': 'maps_direction_transit_integrated',
+        'description': '高德公交路线规划：根据起终点坐标规划公交/地铁通勤方案，返回多个方案的耗时、距离、步行距离与分段明细（线路、上下车站、站数）。',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'origin': {'type': 'string', 'description': '起点坐标 lng,lat（来自 maps_geo）'},
+                'destination': {'type': 'string', 'description': '终点坐标 lng,lat'},
+                'city': {'type': 'string', 'description': '起点所在城市名，如"深圳"'},
+                'cityd': {'type': 'string', 'description': '终点所在城市名，同城可省略'},
+                'origin_name': {'type': 'string', 'description': '起点地名，用于界面卡片展示'},
+                'destination_name': {'type': 'string', 'description': '终点地名，用于界面卡片展示'},
+            },
+            'required': ['origin', 'destination', 'city'],
+        },
+    },
+    {
+        'name': 'maps_direction_driving',
+        'description': '高德驾车路线规划：根据起终点坐标规划驾车路线，返回耗时、距离、途经主要道路。',
+        'input_schema': {
+            'type': 'object',
+            'properties': {
+                'origin': {'type': 'string', 'description': '起点坐标 lng,lat'},
+                'destination': {'type': 'string', 'description': '终点坐标 lng,lat'},
+                'origin_name': {'type': 'string', 'description': '起点地名，用于界面卡片展示'},
+                'destination_name': {'type': 'string', 'description': '终点地名，用于界面卡片展示'},
+            },
+            'required': ['origin', 'destination'],
+        },
+    },
+]
+
+TOOL_LABELS = {
+    'maps_geo': '地理编码',
+    'maps_text_search': 'POI 搜索',
+    'maps_around_search': '周边搜索',
+    'maps_direction_transit_integrated': '公交路线规划',
+    'maps_direction_driving': '驾车路线规划',
+}
+
+
+def build_agent_system_prompt() -> str:
+    return (
+        '你是出行助手，已接入高德地图实时服务（地理编码、POI 搜索、周边搜索、公交/驾车路线规划）。\n'
+        '工作流程：用户询问路线、怎么走时，先用 maps_geo 把地名转成坐标，再调用对应路线规划工具；'
+        '用户要"附近/周边"的餐厅、酒店、景点推荐时，先 maps_geo 取中心坐标，再调用 maps_around_search；'
+        '路线卡片与 POI 列表卡片由系统自动附在回答上方，正文只需给出简明的中文建议'
+        '（推荐理由、人均、特色等，可结合评分与人均消费），严禁编造任何数据。\n'
+        '工具调用失败时，根据错误信息说明原因并给出替代建议。'
+    )
+
+
+def sse_event(obj) -> str:
+    """把转发/自定义事件序列化为一条 SSE data 帧"""
+    return f'data: {json.dumps(obj, ensure_ascii=False)}\n\n'
+
+
+async def amap_get(path: str, params: dict) -> dict:
+    """请求高德 Web 服务 API（统一注入 key、过滤空参）"""
+    params = {k: v for k, v in params.items() if v not in (None, '')}
+    params['key'] = AMAP_KEY
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f'{AMAP_BASE}{path}', params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+
+def downsample(points: list, limit: int = 30) -> list:
+    """折线点均匀抽样，控制静态地图 URL 长度"""
+    if len(points) <= limit:
+        return points
+    step = (len(points) - 1) / (limit - 1)
+    return [points[round(i * step)] for i in range(limit)]
+
+
+def build_static_map_url(origin: str, destination: str, polyline: list) -> str:
+    """生成带起终点标记 + 路线折线的静态地图 URL（无需前端 JS SDK）"""
+    pts = downsample([p for p in polyline if p], 30)
+    if not pts:
+        return ''
+    markers = f'mid,0x0080FF,起:{origin}|mid,0xFF0000,终:{destination}'
+    paths = '6,0x00B0FF,1,,:' + ';'.join(pts)
+    return (
+        f'{AMAP_BASE}/v3/staticmap?size=750*400&scale=2'
+        f'&markers={quote(markers, safe=":,;|")}'
+        f'&paths={quote(paths, safe=":,;|")}'
+        f'&key={AMAP_KEY}'
+    )
+
+
+async def exec_geo(args: dict):
+    data = await amap_get('/v3/geocode/geo', {'address': args.get('address'), 'city': args.get('city')})
+    if data.get('status') != '1' or not data.get('geocodes'):
+        return {'error': data.get('info', '地理编码失败，未找到匹配地址')}, None
+    geo = data['geocodes'][0]
+    return {'location': geo.get('location'), 'formatted_address': geo.get('formatted_address')}, None
+
+
+def parse_poi(p: dict) -> dict:
+    """提取 POI 卡片字段：评分/人均在 biz_ext 下；评语摘录覆盖稀疏，可能为空"""
+    photos = p.get('photos') or []
+    dist = p.get('distance')
+    biz = p.get('biz_ext') or {}
+
+    def num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    type_segs = [s for s in (p.get('type') or '').split(';') if s]
+    reviews = p.get('featured_reviews') or []
+    r0 = reviews[0] if reviews else None
+    review = r0 if isinstance(r0, str) else (r0.get('review') or r0.get('content')) if isinstance(r0, dict) else None
+    return {
+        'id': p.get('id'),
+        'name': p.get('name'),
+        'address': p.get('address'),
+        'location': p.get('location'),
+        'district': p.get('adname'),
+        'rating': num(biz.get('rating')),
+        'cost': num(biz.get('cost')),
+        'type': p.get('keytag') or (type_segs[1] if len(type_segs) > 1 else (type_segs[0] if type_segs else None)),
+        'tags': [t for t in (p.get('tag') or '').split(',') if t][:4],
+        'review': review,
+        'distance': int(dist) if str(dist).isdigit() else None,
+        'photo': photos[0].get('url') if photos else None,
+    }
+
+
+async def exec_text_search(args: dict):
+    data = await amap_get('/v3/place/text', {
+        'keywords': args.get('keywords'), 'city': args.get('city'), 'extensions': 'all',
+    })
+    if data.get('status') != '1':
+        return {'error': data.get('info', '搜索失败')}, None
+    pois = [parse_poi(p) for p in data.get('pois', [])[:5]]
+    return {'pois': pois}, {
+        'kind': 'poi_list',
+        'title': f'为你找到: {args.get("keywords") or "相关地点"}',
+        'pois': pois,
+    }
+
+
+async def exec_around_search(args: dict):
+    data = await amap_get('/v3/place/around', {
+        'location': args.get('center'), 'keywords': args.get('keywords'),
+        'radius': args.get('radius') or 1000, 'extensions': 'all',
+    })
+    if data.get('status') != '1':
+        return {'error': data.get('info', '周边搜索失败')}, None
+    pois = [parse_poi(p) for p in data.get('pois', [])[:5]]
+    return {'center': args.get('center'), 'pois': pois}, {
+        'kind': 'poi_list',
+        'title': f'{args.get("center_name") or "附近"}: {args.get("keywords") or "热门推荐"}',
+        'pois': pois,
+    }
+
+
+def parse_transit_segments(transit: dict):
+    """解析单个公交方案：步行/乘车分段列表 + 全程折线点"""
+    segments, polyline = [], []
+    for seg in transit.get('segments', []):
+        walking = seg.get('walking') or {}
+        if str(walking.get('distance') or '0') not in ('0', ''):
+            segments.append({
+                'mode': 'walk',
+                'distance_m': int(walking.get('distance', 0)),
+                'duration_min': round(int(walking.get('duration') or 0) / 60),
+            })
+        for line in ((seg.get('bus') or {}).get('buslines') or [])[:1]:
+            polyline.extend(p for p in (line.get('polyline') or '').split(';') if p)
+            segments.append({
+                'mode': 'bus',
+                'line': (line.get('name') or '').split('(')[0],
+                'from': (line.get('departure_stop') or {}).get('name'),
+                'to': (line.get('arrival_stop') or {}).get('name'),
+                'stops': int(line.get('via_num') or 0),
+                'duration_min': round(int(line.get('duration') or 0) / 60),
+            })
+    return segments, polyline
+
+
+async def exec_transit(args: dict):
+    data = await amap_get('/v3/direction/transit/integrated', {
+        'origin': args.get('origin'), 'destination': args.get('destination'),
+        'city': args.get('city'), 'cityd': args.get('cityd'),
+    })
+    if data.get('status') != '1':
+        return {'error': data.get('info', '公交规划失败')}, None
+    route = data.get('route') or {}
+    plans, card = [], None
+    for transit in route.get('transits', [])[:3]:
+        segments, polyline = parse_transit_segments(transit)
+        plan = {
+            'duration_min': round(int(transit.get('duration') or 0) / 60),
+            'distance_km': round(int(transit.get('distance') or 0) / 1000, 1),
+            'walking_m': int(transit.get('walking_distance') or 0),
+            'segments': segments,
+        }
+        plans.append(plan)
+        if card is None and polyline:
+            card = {
+                'kind': 'transit',
+                'title': f'公交前往: {args.get("destination_name") or "目的地"}',
+                'map_url': build_static_map_url(args.get('origin', ''), args.get('destination', ''), polyline),
+                'origin': args.get('origin'), 'destination': args.get('destination'),
+                'origin_name': args.get('origin_name'), 'destination_name': args.get('destination_name'),
+                'city': args.get('city'),
+                'polyline': downsample(polyline, 100),
+                'duration_min': plan['duration_min'],
+                'distance_km': plan['distance_km'],
+                'stops': sum(s['stops'] for s in segments if s['mode'] == 'bus'),
+                'segments': segments,
+            }
+    return {'taxi_cost': route.get('taxi_cost'), 'plans': plans}, card
+
+
+async def exec_driving(args: dict):
+    data = await amap_get('/v3/direction/driving', {
+        'origin': args.get('origin'), 'destination': args.get('destination'),
+    })
+    if data.get('status') != '1':
+        return {'error': data.get('info', '驾车规划失败')}, None
+    path = ((data.get('route') or {}).get('paths') or [{}])[0]
+    polyline, roads = [], []
+    for step in path.get('steps', []):
+        polyline.extend(p for p in (step.get('polyline') or '').split(';') if p)
+        if step.get('road') and step['road'] not in roads:
+            roads.append(step['road'])
+    result = {
+        'duration_min': round(int(path.get('duration') or 0) / 60),
+        'distance_km': round(int(path.get('distance') or 0) / 1000, 1),
+        'tolls': path.get('tolls', '0'),
+        'main_roads': roads[:8],
+    }
+    card = {
+        'kind': 'driving',
+        'title': f'驾车前往: {args.get("destination_name") or "目的地"}',
+        'map_url': build_static_map_url(args.get('origin', ''), args.get('destination', ''), polyline),
+        'origin': args.get('origin'), 'destination': args.get('destination'),
+        'origin_name': args.get('origin_name'), 'destination_name': args.get('destination_name'),
+        'polyline': downsample(polyline, 100),
+        'duration_min': result['duration_min'],
+        'distance_km': result['distance_km'],
+        'segments': [{'mode': 'drive', 'road': r} for r in roads[:5]],
+    }
+    return result, card
+
+
+async def execute_amap_tool(name: str, args: dict):
+    """执行一次高德工具调用，返回 (给模型的数据, 给前端的路线卡片)"""
+    try:
+        if name == 'maps_geo':
+            return await exec_geo(args)
+        if name == 'maps_text_search':
+            return await exec_text_search(args)
+        if name == 'maps_around_search':
+            return await exec_around_search(args)
+        if name == 'maps_direction_transit_integrated':
+            return await exec_transit(args)
+        if name == 'maps_direction_driving':
+            return await exec_driving(args)
+        return {'error': f'未知工具: {name}'}, None
+    except httpx.HTTPError as err:
+        return {'error': f'高德服务请求失败: {err}'}, None
+
+
+def summarize_tool_result(name: str, result: dict) -> str:
+    """工具结果的一句话摘要，供前端工具 chip 展示"""
+    if result.get('error'):
+        return '失败'
+    if name == 'maps_geo':
+        return result.get('location', '')
+    if name in ('maps_text_search', 'maps_around_search'):
+        return f'{len(result.get("pois", []))} 条结果'
+    if name == 'maps_direction_transit_integrated':
+        return f'{len(result.get("plans", []))} 个方案'
+    if name == 'maps_direction_driving':
+        return f'约 {result.get("duration_min")} 分钟'
+    return ''
 
 
 async def stream_chat(request: Request, system: str | None = None):
@@ -217,6 +561,154 @@ async def chat(request: Request):
 async def a2ui_chat(request: Request):
     """A2UI 场景接口：注入 A2UI 系统提示词，让模型输出可渲染的界面描述"""
     return await stream_chat(request, build_a2ui_system_prompt())
+
+
+@app.post('/api/agent/chat')
+async def agent_chat(request: Request):
+    """出行助手接口：携带高德工具，解析 tool_use 并执行，循环至模型给出最终回答"""
+    body = await request.json()
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
+    if not API_KEY:
+        return JSONResponse(
+            {'error': '服务端未配置 ANTHROPIC_API_KEY，请在 server/.env 中设置'},
+            status_code=500,
+        )
+    if not AMAP_KEY:
+        return JSONResponse(
+            {'error': '服务端未配置 AMAP_KEY，请在 server/.env 中填入高德 Web 服务 Key'},
+            status_code=500,
+        )
+
+    history = [{'role': m.get('role'), 'content': m.get('content')} for m in messages]
+
+    async def generate():
+        client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=None))
+        try:
+            for _ in range(MAX_TOOL_ROUNDS):
+                payload = {
+                    'model': body.get('model'),
+                    'messages': history,
+                    'max_tokens': body.get('max_tokens', 4096),
+                    'stream': True,
+                    'tools': AMAP_TOOLS,
+                    'system': build_agent_system_prompt(),
+                }
+                try:
+                    upstream = await client.send(
+                        client.build_request(
+                            'POST',
+                            f'{GATEWAY_BASE}/v1/messages',
+                            json=payload,
+                            headers={'content-type': 'application/json', **GATEWAY_HEADERS},
+                        ),
+                        stream=True,
+                    )
+                except httpx.HTTPError as err:
+                    yield sse_event({'type': 'error', 'error': {'message': f'请求网关失败: {err}'}})
+                    break
+                if upstream.status_code >= 400:
+                    text = (await upstream.aread()).decode('utf-8', errors='replace')
+                    await upstream.aclose()
+                    yield sse_event({'type': 'error', 'error': {'message': text}})
+                    break
+
+                # 逐帧解析 SSE：原样转发给前端，同时累积 text / tool_use 块
+                blocks, current, stop_reason, buf = [], None, None, ''
+                async for chunk in upstream.aiter_text():
+                    buf += chunk
+                    while '\n' in buf:
+                        line, buf = buf.split('\n', 1)
+                        line = line.strip()
+                        if not line.startswith('data:'):
+                            continue
+                        data = line[5:].strip()
+                        if not data:
+                            continue
+                        try:
+                            ev = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        yield sse_event(ev)
+                        etype = ev.get('type')
+                        if etype == 'content_block_start':
+                            cb = ev.get('content_block') or {}
+                            if cb.get('type') == 'tool_use':
+                                current = {'type': 'tool_use', 'id': cb.get('id'), 'name': cb.get('name'), 'input': ''}
+                                blocks.append(current)
+                                yield sse_event({
+                                    'type': 'tool_call', 'name': current['name'],
+                                    'label': TOOL_LABELS.get(current['name'], current['name']),
+                                    'status': 'calling',
+                                })
+                            elif cb.get('type') == 'text':
+                                current = {'type': 'text', 'text': ''}
+                                blocks.append(current)
+                            else:
+                                current = None
+                        elif etype == 'content_block_delta':
+                            delta = ev.get('delta') or {}
+                            if delta.get('type') == 'text_delta' and current and current['type'] == 'text':
+                                current['text'] += delta.get('text', '')
+                            elif delta.get('type') == 'input_json_delta' and current and current['type'] == 'tool_use':
+                                current['input'] += delta.get('partial_json', '')
+                        elif etype == 'content_block_stop':
+                            current = None
+                        elif etype == 'message_delta':
+                            stop_reason = (ev.get('delta') or {}).get('stop_reason') or stop_reason
+                await upstream.aclose()
+
+                tool_uses = [b for b in blocks if b['type'] == 'tool_use']
+                if stop_reason != 'tool_use' or not tool_uses:
+                    break  # 模型已给出最终回答，结束循环
+
+                # 组装 assistant 消息（text + tool_use），执行工具并回写 tool_result 继续循环
+                assistant_content, results = [], []
+                for block in blocks:
+                    if block['type'] == 'text':
+                        if block['text']:
+                            assistant_content.append({'type': 'text', 'text': block['text']})
+                        continue
+                    try:
+                        tool_input = json.loads(block['input'] or '{}')
+                    except json.JSONDecodeError:
+                        tool_input = {}
+                    assistant_content.append(
+                        {'type': 'tool_use', 'id': block['id'], 'name': block['name'], 'input': tool_input}
+                    )
+                    result, card = await execute_amap_tool(block['name'], tool_input)
+                    if card:
+                        # poi_list 走独立事件，客户端分别渲染 POI 列表卡片 / 路线卡片
+                        yield sse_event({
+                            'type': 'amap_poi_list' if card.get('kind') == 'poi_list' else 'amap_card',
+                            'card': card,
+                        })
+                    yield sse_event({
+                        'type': 'tool_call', 'name': block['name'],
+                        'label': TOOL_LABELS.get(block['name'], block['name']),
+                        'status': 'done', 'summary': summarize_tool_result(block['name'], result),
+                    })
+                    results.append({
+                        'type': 'tool_result', 'tool_use_id': block['id'],
+                        'content': json.dumps(result, ensure_ascii=False),
+                    })
+                history.append({'role': 'assistant', 'content': assistant_content})
+                history.append({'role': 'user', 'content': results})
+            # 终止帧：RN 客户端（react-native-sse）在流结束后会自动重连，需明确信号结束会话
+            yield sse_event({'type': 'agent_done'})
+        finally:
+            await client.aclose()
+
+    return StreamingResponse(
+        generate(),
+        media_type='text/event-stream; charset=utf-8',
+        headers={
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        },
+    )
 
 
 if __name__ == '__main__':

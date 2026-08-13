@@ -318,7 +318,8 @@ body {
 /* ========== 消息气泡 ========== */
 .msg {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 7px;
   animation: fade-in 0.3s ease;
 }
 
@@ -334,18 +335,31 @@ body {
 }
 
 .msg-user {
-  flex-direction: row-reverse;
+  align-items: flex-end;
+}
+
+/* 消息头部：头像 + 名称 + 时间 */
+.msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.msg-time {
+  font-size: 12px;
+  color: var(--text-dim);
+  opacity: 0.75;
 }
 
 .msg-avatar {
   flex-shrink: 0;
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 
@@ -361,8 +375,21 @@ body {
   box-shadow: 0 0 14px rgba(124, 108, 240, 0.4);
 }
 
+.msg-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 92%;
+  min-width: 0;
+}
+
+.msg-user .msg-body {
+  align-items: flex-end;
+}
+
 .msg-bubble {
-  max-width: 82%;
+  max-width: 100%;
   padding: 13px 17px;
   border-radius: var(--radius);
   font-size: 15px;
@@ -389,6 +416,37 @@ body {
   background: var(--error-bg) !important;
   border-color: var(--error-border) !important;
   color: var(--error-text) !important;
+}
+
+/* 复制 Markdown 按钮 */
+.btn-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: all 0.15s;
+}
+
+.msg:hover .btn-copy,
+.btn-copy.copied {
+  opacity: 1;
+}
+
+.btn-copy:hover {
+  color: var(--text);
+  background: var(--panel);
+  border-color: var(--border);
+}
+
+.btn-copy.copied {
+  color: var(--accent);
 }
 
 /* ========== Markdown ========== */
@@ -961,15 +1019,18 @@ body {
     gap: 18px;
   }
   .msg {
-    gap: 8px;
+    gap: 6px;
   }
   .msg-avatar {
-    width: 30px;
-    height: 30px;
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+  .msg-time {
     font-size: 11px;
   }
   .msg-bubble {
-    max-width: 92%;
+    max-width: 100%;
     padding: 10px 13px;
     font-size: 14.5px;
   }
@@ -1075,4 +1136,240 @@ body {
   .msg-bubble {
     padding: 9px 11px;
   }
+}
+
+/* ========== 出行助手：工具调用 chips + 高德路线卡片 ========== */
+.tool-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.tool-chip {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 3px 10px;
+}
+
+.tool-chip.calling {
+  color: var(--accent-2);
+  border-color: var(--accent-2);
+  animation: chip-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes chip-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.amap-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 10px;
+  background: var(--panel);
+}
+
+.amap-map {
+  position: relative;
+  background: var(--panel-strong);
+}
+
+.amap-map img {
+  width: 100%;
+  display: block;
+}
+
+.amap-static-link {
+  display: block;
+  cursor: zoom-in;
+}
+
+.amap-js {
+  width: 100%;
+  height: 280px;
+}
+
+.amap-expand {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  color: #333;
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.amap-logo {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.88);
+  color: #1d6fd8;
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.amap-route {
+  padding: 12px 14px;
+}
+
+.amap-route-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.amap-segs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.9;
+}
+
+.amap-seg {
+  font-size: 13px;
+}
+
+.amap-seg-arrow {
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+.amap-route-meta {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* POI 列表卡片：整条可点击跳转高德 */
+.poi-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.poi-item {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  background: var(--panel);
+  transition: border-color 0.15s;
+}
+
+.poi-item:hover {
+  border-color: var(--accent-2);
+}
+
+.poi-photo {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.poi-photo-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-strong);
+  font-size: 22px;
+}
+
+.poi-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.poi-name {
+  font-weight: 600;
+  font-size: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poi-meta {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.poi-rating {
+  color: #ff7a1a;
+  font-weight: 600;
+}
+
+.poi-dist {
+  margin-left: auto;
+}
+
+.poi-addr {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.poi-photo-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.poi-photo-wrap .poi-photo {
+  width: 72px;
+  height: 72px;
+}
+
+.poi-watermark {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font-size: 9px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
+.poi-rating em {
+  font-style: normal;
+  margin-left: 5px;
+  padding-left: 6px;
+  border-left: 1px solid var(--border-strong);
+}
+
+.poi-quote {
+  font-size: 12px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
