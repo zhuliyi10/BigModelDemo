@@ -601,18 +601,478 @@ body {
   opacity: 0.8;
 }
 
+/* ========== 模式切换 ========== */
+.mode-tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 14px;
+  margin-right: auto; /* 与标题保持相邻，把操作区推向右侧 */
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+}
+.mode-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  padding: 5px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.mode-tab:hover:not(:disabled) {
+  color: var(--text);
+}
+.mode-tab.active {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.35);
+}
+.mode-tab:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ========== A2UI 动态界面 ========== */
+.a2ui-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.a2ui-surface {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+.a2ui-badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(108, 92, 231, 0.12);
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+.a2ui-loading {
+  font-size: 13px;
+  color: var(--text-dim);
+  padding: 4px 2px;
+}
+.a2ui-missing {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.a2ui-text-h1 {
+  font-size: 20px;
+  font-weight: 700;
+}
+.a2ui-text-h2 {
+  font-size: 17px;
+  font-weight: 600;
+}
+.a2ui-text-h3 {
+  font-size: 15px;
+  font-weight: 600;
+}
+.a2ui-text-body {
+  font-size: 14px;
+  line-height: 1.6;
+}
+.a2ui-text-caption {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.a2ui-column {
+  display: flex;
+  flex-direction: column;
+}
+.a2ui-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.a2ui-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.a2ui-field-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+.a2ui-input {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  resize: vertical;
+}
+.a2ui-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(108, 92, 231, 0.15);
+}
+
+.a2ui-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.a2ui-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* ChoicePicker：可点选的选项 chips */
+.a2ui-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.a2ui-chip {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.a2ui-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.a2ui-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.a2ui-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.a2ui-slider {
+  flex: 1;
+  accent-color: var(--accent);
+}
+.a2ui-slider-value {
+  min-width: 36px;
+  text-align: right;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.a2ui-card {
+  border: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.a2ui-card-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.a2ui-card-desc {
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.a2ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+}
+.a2ui-btn-primary {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(108, 92, 231, 0.3);
+}
+.a2ui-btn-primary:hover {
+  filter: brightness(1.08);
+}
+.a2ui-btn-secondary {
+  background: transparent;
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.a2ui-btn-secondary:hover {
+  background: var(--panel-strong);
+}
+
+.a2ui-image {
+  max-width: 100%;
+  border-radius: 10px;
+}
+.a2ui-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2px 0;
+}
+
+/* 界面提交事件在用户侧的展示 */
+.a2ui-event-msg {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.a2ui-event-tag {
+  font-weight: 600;
+  color: var(--accent);
+}
+.a2ui-event-msg pre {
+  margin: 0;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--pre-bg);
+  color: var(--pre-color);
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+/* 提交信息的「标签: 值」可读摘要 */
+.a2ui-event-summary {
+  list-style: none;
+  margin: 0;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--pre-bg);
+  border-radius: 8px;
+}
+.a2ui-event-summary li {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.a2ui-event-label {
+  flex: 0 0 auto;
+  min-width: 6em;
+  color: var(--text-dim);
+}
+.a2ui-event-value {
+  color: var(--pre-color);
+  word-break: break-all;
+}
+
 /* ========== 移动端 ========== */
 @media (max-width: 640px) {
+  /* iOS Safari 对 fixed 背景支持差（滚动跳动/不跟随），降级为 scroll */
+  body {
+    background-attachment: scroll;
+  }
+
+  /* 头部：两行 grid —— 第一行 logo+标题+操作区，第二行模式切换 */
   .header {
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  .header-title {
+    grid-column: 1;
+    grid-row: 1;
+    gap: 8px;
+    min-width: 0;
+  }
+  .header h1 {
+    font-size: 15px;
+  }
+  .logo-orb {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+    flex-shrink: 0;
+  }
+  /* 模式切换独占第二行，均分宽度方便点按 */
+  .mode-tabs {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin: 0;
+    width: 100%;
+  }
+  .mode-tab {
+    flex: 1;
+    text-align: center;
+    padding: 7px 10px;
+    white-space: nowrap;
+  }
+  .header-actions {
+    gap: 6px;
+    margin-left: auto;
   }
   .header-actions select {
     max-width: 140px;
+    padding: 6px 26px 6px 10px;
+    font-size: 12px;
+  }
+  .btn-ghost {
+    padding: 7px 10px;
+    font-size: 12px;
+  }
+  .btn-theme {
+    width: 32px;
+    height: 32px;
+  }
+
+  /* 消息列表 */
+  .chat-list {
+    padding: 16px 12px 8px;
+    gap: 18px;
+  }
+  .msg {
+    gap: 8px;
+  }
+  .msg-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 11px;
   }
   .msg-bubble {
     max-width: 92%;
+    padding: 10px 13px;
+    font-size: 14.5px;
+  }
+
+  /* 空状态 */
+  .empty-state {
+    gap: 12px;
+    padding-bottom: 4vh;
+  }
+  .empty-orb {
+    width: 62px;
+    height: 62px;
+    font-size: 28px;
+    border-radius: 20px;
+  }
+  .empty-state h2 {
+    font-size: 19px;
+    text-align: center;
+  }
+  .empty-state > p {
+    font-size: 13px;
+    text-align: center;
+    padding: 0 8px;
   }
   .suggestions {
     grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .chip {
+    padding: 11px 14px;
+  }
+
+  /* Markdown：表格与代码块横向可滚动，避免撑破气泡 */
+  .markdown table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+  .markdown pre {
+    padding: 12px;
+  }
+
+  /* A2UI 动态界面：加大触控区域，防 iOS 输入缩放 */
+  .a2ui-surface {
+    padding: 12px;
+    gap: 10px;
+  }
+  .a2ui-input {
+    font-size: 16px; /* <16px 会触发 iOS 聚焦缩放 */
+    padding: 10px 12px;
+    width: 100%;
+  }
+  .a2ui-check {
+    padding: 4px 0;
+  }
+  .a2ui-check input {
+    width: 18px;
+    height: 18px;
+  }
+  .a2ui-btn {
+    width: 100%;
+    min-height: 44px;
+    font-size: 15px;
+  }
+  /* 行内多个按钮时均分宽度 */
+  .a2ui-row .a2ui-btn {
+    width: auto;
+    flex: 1;
+  }
+  .a2ui-slider {
+    height: 28px;
+  }
+
+  /* 输入区：适配全面屏底部安全区 */
+  .composer {
+    padding: 10px 12px calc(14px + env(safe-area-inset-bottom, 0px));
+  }
+  .composer-box {
+    padding: 8px 8px 8px 14px;
+    border-radius: 16px;
+  }
+  .composer-box textarea {
+    font-size: 16px; /* 防 iOS 聚焦缩放 */
+  }
+  .btn-send,
+  .btn-stop {
+    width: 40px;
+    height: 40px;
+  }
+  .composer-tip {
+    font-size: 11px;
+  }
+}
+
+/* 超小屏（iPhone SE 等）：进一步压缩 */
+@media (max-width: 380px) {
+  .header-actions select {
+    max-width: 100px;
+  }
+  .btn-ghost {
+    padding: 7px 8px;
+  }
+  .msg-bubble {
+    padding: 9px 11px;
   }
 }

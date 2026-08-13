@@ -1,6 +1,6 @@
 # 大模型问答 Demo
 
-一个基于 **React + Node.js** 的大模型问答应用。前端使用 React（Vite）实现聊天界面，后端作为代理服务，以流式（SSE）方式转发 [Anthropic 兼容网关](https://lab.iwhalecloud.com/gpt-proxy/anthropic) 的 `/v1/messages` 接口。API Key 仅保存在服务端环境变量中，前端不接触密钥。
+一个基于 **React + Python（FastAPI）** 的大模型问答应用。前端使用 React（Vite）实现聊天界面，后端作为代理服务，以流式（SSE）方式转发 [Anthropic 兼容网关](https://lab.iwhalecloud.com/gpt-proxy/anthropic) 的 `/v1/messages` 接口。API Key 仅保存在服务端环境变量中，前端不接触密钥。
 
 ## 功能特性
 
@@ -18,16 +18,18 @@
 | 层 | 技术 |
 |----|------|
 | 前端 | React 18、Vite 5、react-markdown、remark-gfm |
-| 后端 | Node.js（原生 fetch）、Express、cors、dotenv |
+| 后端 | Python 3、FastAPI、Uvicorn、httpx、python-dotenv |
 | 通信 | 前端 → 后端 `/api/chat` → 网关 `/v1/messages`，SSE 流式透传 |
 
 ## 项目结构
 
 ```
 BigModelDemo/
-├── package.json            # npm workspaces 根配置，统一启动脚本
-├── server/                 # 后端代理服务（默认端口 3001）
-│   ├── index.js            # Express 服务：/api/chat、/api/models、/api/health
+├── package.json            # 根配置，统一启动脚本（前端 npm workspace + 后端 uvicorn）
+├── server/                 # 后端代理服务（FastAPI，默认端口 3001）
+│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/models、/api/health
+│   ├── requirements.txt    # Python 依赖清单
+│   ├── .venv/              # Python 虚拟环境（不入库）
 │   ├── .env                # 真实密钥（不入库，需自行创建）
 │   └── .env.example        # 环境变量模板
 └── client/                 # React 前端（默认端口 5173）
@@ -43,12 +45,18 @@ BigModelDemo/
 
 ### 1. 环境要求
 
-- Node.js ≥ 18（需原生 `fetch` 支持，推荐 20+）
+- Node.js ≥ 18（前端构建与启动脚本）
+- Python ≥ 3.10（后端服务）
 
 ### 2. 安装依赖
 
 ```bash
+# 前端依赖
 npm install
+
+# 后端依赖（首次需要，创建虚拟环境并安装）
+python3 -m venv server/.venv
+server/.venv/bin/pip install -r server/requirements.txt
 ```
 
 ### 3. 配置密钥
@@ -117,7 +125,7 @@ npm run dev:client   # 前端 http://localhost:5173
 npm run build        # 构建前端到 client/dist
 ```
 
-可将 `client/dist` 交由任意静态服务器托管，并将 `/api` 反向代理到后端服务；或直接由 Express 托管静态文件。
+可将 `client/dist` 交由任意静态服务器托管，并将 `/api` 反向代理到后端服务；或由 FastAPI 挂载 `StaticFiles` 直接托管静态文件。
 
 ## 常见问题
 

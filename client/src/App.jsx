@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import A2UISurface from './A2UISurface';
 
 // 默认模型与兜底列表；实际列表从网关 /api/models 动态加载
 const DEFAULT_MODEL = 'claude-4.6-sonnet';
@@ -19,6 +20,14 @@ const SUGGESTIONS = [
   '帮我写一首关于秋天的短诗',
   '用表格对比 React 和 Vue 的异同',
   '给我讲一个有趣的冷知识',
+];
+
+// A2UI 场景推荐问题：引导模型生成可交互界面
+const A2UI_SUGGESTIONS = [
+  '帮我预订明天晚上 7 点、2 人的餐厅',
+  '我想规划一次三天的杭州旅行',
+  '帮我点一杯咖啡并选择配送方式',
+  '生成一份团队活动报名表',
 ];
 
 /** 解析 SSE 缓冲区，返回 [完整事件数组, 剩余缓冲] */
@@ -46,6 +55,27 @@ function extractError(data) {
   return data?.error?.message || data?.error || JSON.stringify(data) || '请求失败';
 }
 
+/** 将界面提交的 dataModel 转成「标签: 值」摘要，供用户侧消息展示 */
+function buildEventSummary(event) {
+  const data = event.dataModel ?? {};
+  const labelOf = {};
+  for (const f of event.fields ?? []) {
+    if (f?.path?.startsWith('/')) labelOf[f.path.slice(1)] = f.label;
+  }
+  const format = (v) => {
+    if (v === true) return '是';
+    if (v === false) return '否';
+    if (v == null || v === '') return '未填写';
+    if (Array.isArray(v)) return v.length > 0 ? v.join('、') : '未填写';
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+  };
+  return Object.entries(data).map(([key, value]) => ({
+    label: labelOf[key] || key,
+    value: format(value),
+  }));
+}
+
 const SunIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
     <circle cx="12" cy="12" r="4" />
@@ -65,6 +95,8 @@ export default function App() {
   const [models, setModels] = useState(FALLBACK_MODELS);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [loading, setLoading] = useState(false);
+  // 交互模式：chat = 纯文本问答；a2ui = 模型生成可交互界面
+  const [mode, setMode] = useState('chat');
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -108,11 +140,24 @@ export default function App() {
 
   const stop = () => abortRef.current?.abort();
 
-  const send = async (preset) => {
+  const switchMode = (next) => {
+    if (next === mode || loading) return;
+    setMode(next);
+    setMessages([]);
+  };
+
+  /** A2UI 界面事件：用户点击按钮后，把界面数据作为新消息回传给模型 */
+  const handleA2UIEvent = (event) => {
+    if (loading) return;
+    const payload = `[A2UI_EVENT] ${event.surfaceId}.${event.name} ${JSON.stringify(event.dataModel ?? {})}`;
+    send(payload, { a2uiSummary: buildEventSummary(event) });
+  };
+
+  const send = async (preset, extra) => {
     const question = (preset ?? input).trim();
     if (!question || loading) return;
 
-    const nextMessages = [...messages, { role: 'user', content: question }];
+    const nextMessages = [...messages, { role: 'user', content: question, ...extra }];
     setMessages([...nextMessages, { role: 'assistant', content: '' }]);
     setInput('');
     setLoading(true);
@@ -121,7 +166,7 @@ export default function App() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch(mode === 'a2ui' ? '/api/a2ui/chat' : '/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -216,6 +261,14 @@ export default function App() {
           <div className="logo-orb">✦</div>
           <h1>大模型问答</h1>
         </div>
+        <div className="mode-tabs">
+          <button className={`mode-tab${mode === 'chat' ? ' active' : ''}`} onClick={() => switchMode('chat')} disabled={loading}>
+            文本对话
+          </button>
+          <button className={`mode-tab${mode === 'a2ui' ? ' active' : ''}`} onClick={() => switchMode('a2ui')} disabled={loading}>
+            ⚡ A2UI 场景
+          </button>
+        </div>
         <div className="header-actions">
           <button className="btn-theme" onClick={toggleTheme} title={theme === 'dark' ? '切换明亮模式' : '切换深色模式'}>
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
@@ -237,10 +290,14 @@ export default function App() {
         {messages.length === 0 && (
           <div className="empty-state">
             <div className="empty-orb">✦</div>
-            <h2>有什么可以帮你的？</h2>
-            <p>选择一个话题开始，或直接输入你的问题</p>
+            <h2>{mode === 'a2ui' ? '让 AI 为你生成一个界面' : '有什么可以帮你的？'}</h2>
+            <p>
+              {mode === 'a2ui'
+                ? 'AI 将根据需求实时生成可交互界面（A2UI 协议），填写后一键提交'
+                : '选择一个话题开始，或直接输入你的问题'}
+            </p>
             <div className="suggestions">
-              {SUGGESTIONS.map((s) => (
+              {(mode === 'a2ui' ? A2UI_SUGGESTIONS : SUGGESTIONS).map((s) => (
                 <button key={s} className="chip" onClick={() => send(s)} disabled={loading}>
                   {s}
                 </button>
@@ -254,9 +311,17 @@ export default function App() {
             <div className={`msg-bubble${msg.error ? ' msg-error' : ''}`}>
               {msg.role === 'assistant' ? (
                 msg.content ? (
-                  <div className="markdown">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
-                  </div>
+                  mode === 'a2ui' ? (
+                    <A2UISurface
+                      text={msg.content}
+                      streaming={loading && i === messages.length - 1}
+                      onEvent={handleA2UIEvent}
+                    />
+                  ) : (
+                    <div className="markdown">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
+                    </div>
+                  )
                 ) : (
                   <div className="typing">
                     <span />
@@ -264,6 +329,22 @@ export default function App() {
                     <span />
                   </div>
                 )
+              ) : msg.content.startsWith('[A2UI_EVENT]') ? (
+                <div className="a2ui-event-msg">
+                  <div className="a2ui-event-tag">⚡ 界面提交</div>
+                  {Array.isArray(msg.a2uiSummary) && msg.a2uiSummary.length > 0 ? (
+                    <ul className="a2ui-event-summary">
+                      {msg.a2uiSummary.map((row, idx) => (
+                        <li key={idx}>
+                          <span className="a2ui-event-label">{row.label}</span>
+                          <span className="a2ui-event-value">{row.value}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <pre>{msg.content.slice(msg.content.indexOf('{'))}</pre>
+                  )}
+                </div>
               ) : (
                 msg.content
               )}
@@ -277,7 +358,7 @@ export default function App() {
           <textarea
             ref={inputRef}
             rows={1}
-            placeholder="输入问题，Enter 发送，Shift+Enter 换行"
+            placeholder="输入问题，Enter 发送 · Shift+Enter 换行"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
@@ -292,7 +373,9 @@ export default function App() {
             </button>
           )}
         </div>
-        <p className="composer-tip">内容由 AI 生成，请注意甄别 · 当前模型：{model}</p>
+        <p className="composer-tip">
+          内容由 AI 生成，请注意甄别 · {mode === 'a2ui' ? 'A2UI 模式：AI 生成可交互界面' : '文本对话模式'} · 当前模型：{model}
+        </p>
       </footer>
     </div>
   );

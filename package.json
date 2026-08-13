@@ -3,12 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "workspaces": [
-    "server",
     "client"
   ],
   "scripts": {
-    "dev": "concurrently -n server,client -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
-    "dev:server": "npm run dev -w server",
+    "dev": "concurrently -n server,client -c blue,green \"npm run dev:server\" \"npm run dev -w client\"",
+    "dev:server": "server/.venv/bin/uvicorn main:app --app-dir server --host 0.0.0.0 --port 3001 --reload",
     "dev:client": "npm run dev -w client",
     "build": "npm run build -w client"
   },
