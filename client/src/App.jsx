@@ -352,6 +352,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   // 交互模式：chat = 纯文本问答；a2ui = 模型生成可交互界面
   const [mode, setMode] = useState('chat');
+  const agentLike = mode === 'agent';
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -560,7 +561,11 @@ export default function App() {
           <div className="empty-state">
             <div className="empty-orb">✦</div>
             <h2>
-              {mode === 'a2ui' ? '让 AI 为你生成一个界面' : mode === 'agent' ? '说出目的地，AI 调高德查路线' : '有什么可以帮你的？'}
+              {mode === 'a2ui'
+                ? '让 AI 为你生成一个界面'
+                : mode === 'agent'
+                  ? '说出目的地，AI 调高德查路线'
+                  : '有什么可以帮你的？'}
             </h2>
             <p>
               {mode === 'a2ui'
@@ -570,7 +575,12 @@ export default function App() {
                   : '选择一个话题开始，或直接输入你的问题'}
             </p>
             <div className="suggestions">
-              {(mode === 'a2ui' ? A2UI_SUGGESTIONS : mode === 'agent' ? AGENT_SUGGESTIONS : SUGGESTIONS).map((s) => (
+              {(mode === 'a2ui'
+                ? A2UI_SUGGESTIONS
+                : mode === 'agent'
+                  ? AGENT_SUGGESTIONS
+                  : SUGGESTIONS
+              ).map((s) => (
                 <button key={s} className="chip" onClick={() => send(s)} disabled={loading}>
                   {s}
                 </button>
@@ -591,7 +601,7 @@ export default function App() {
               <div className="msg-body">
                 <div className={`msg-bubble${msg.error ? ' msg-error' : ''}`}>
                   {msg.role === 'assistant' ? (
-                    msg.content || (mode === 'agent' && ((msg.tools || []).length > 0 || msg.amapCard)) ? (
+                    msg.content || (agentLike && ((msg.tools || []).length > 0 || msg.amapCard)) ? (
                       mode === 'a2ui' ? (
                         <A2UISurface
                           text={msg.content}
@@ -600,7 +610,7 @@ export default function App() {
                         />
                       ) : (
                         <>
-                          {mode === 'agent' && (msg.tools || []).length > 0 && (
+                          {agentLike && (msg.tools || []).length > 0 && (
                             <div className="tool-chips">
                               {msg.tools.map((t, idx) => (
                                 <span key={idx} className={`tool-chip ${t.status}`}>
@@ -610,7 +620,7 @@ export default function App() {
                               ))}
                             </div>
                           )}
-                          {mode === 'agent' && msg.amapCard &&
+                          {agentLike && msg.amapCard &&
                             (msg.amapCard.kind === 'poi_list' ? (
                               <PoiListCard card={msg.amapCard} />
                             ) : (
@@ -679,7 +689,11 @@ export default function App() {
         </div>
         <p className="composer-tip">
           内容由 AI 生成，请注意甄别 ·{' '}
-          {mode === 'a2ui' ? 'A2UI 模式：AI 生成可交互界面' : mode === 'agent' ? '出行助手模式：AI 工具调用高德服务' : '文本对话模式'} · 当前模型：{model}
+          {mode === 'a2ui'
+            ? 'A2UI 模式：AI 生成可交互界面'
+            : mode === 'agent'
+              ? '出行助手模式：AI 工具调用高德服务'
+              : '文本对话模式'} · 当前模型：{model}
         </p>
       </footer>
     </div>

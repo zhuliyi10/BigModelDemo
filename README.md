@@ -1,6 +1,6 @@
 # 大模型问答 Demo
 
-一个基于 **React + Python（FastAPI）** 的大模型问答应用。前端使用 React（Vite）实现聊天界面，后端作为代理服务，以流式（SSE）方式转发 [Anthropic 兼容网关](https://lab.iwhalecloud.com/gpt-proxy/anthropic) 的 `/v1/messages` 接口。API Key 仅保存在服务端环境变量中，前端不接触密钥。
+一个基于 **React + Python（FastAPI）** 的大模型问答应用。前端使用 React（Vite）实现聊天界面，后端作为代理服务，以流式（SSE）方式转发 Anthropic 兼容端点（如智谱 `https://open.bigmodel.cn/api/anthropic`）的 `/v1/messages` 接口。API Key 仅保存在服务端环境变量中，前端不接触密钥。
 
 ## 功能特性
 
@@ -70,8 +70,9 @@ cp .env.example .env
 
 ```ini
 ANTHROPIC_API_KEY=你的API-Key
+ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic
 # 可选：
-# GATEWAY_BASE=https://lab.iwhalecloud.com/gpt-proxy/anthropic
+# MODEL_ID=glm-4.5-air
 # PORT=3001
 ```
 
@@ -116,7 +117,9 @@ npm run dev:client   # 前端 http://localhost:5173
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `ANTHROPIC_API_KEY` | （必填） | 网关 API Key，从 `server/.env` 读取 |
-| `GATEWAY_BASE` | `https://lab.iwhalecloud.com/gpt-proxy/anthropic` | 网关地址 |
+| `ANTHROPIC_BASE_URL` | （必填） | Anthropic 兼容端点地址，如智谱 `https://open.bigmodel.cn/api/anthropic` |
+| `MODEL_ID` | （可选） | 默认模型 ID，前端未指定模型时使用，并在模型列表中置顶 |
+| `GATEWAY_BASE` | — | 旧变量名，仍兼容（`ANTHROPIC_BASE_URL` 优先） |
 | `PORT` | `3001` | 后端端口 |
 
 ## 生产构建
