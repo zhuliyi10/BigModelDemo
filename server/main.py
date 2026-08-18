@@ -6,6 +6,7 @@
 - POST /api/chat       通用流式问答
 - POST /api/a2ui/chat  A2UI 场景问答（注入 A2UI 系统提示词）
 - POST /api/agent/chat 出行助手问答（模型以工具调用方式调用高德服务）
+- POST /api/food/chat  外卖点餐问答（美团开放平台工具 + A2UI 点餐界面）
 """
 
 import asyncio
@@ -21,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from amap import AmapService
+from meituan import MeituanService, build_mock_note
 
 # 从 server/.env 加载环境变量（.env 不入库，见 .gitignore）
 BASE_DIR = Path(__file__).resolve().parent
@@ -169,10 +171,12 @@ updateComponents 完整示例（注意：components 必须包含一个根容器 
 当用户消息以 "[A2UI_EVENT]" 开头时，表示用户刚在界面上完成操作，消息中包含界面提交的 JSON 数据：请基于数据直接给出简短的中文确认或处理结果，用普通文本（可用 Markdown）回复，不要再生成界面。"""
 
 
-# ---------- 出行助手模式：高德服务封装在 amap.py（AmapService） ----------
-# 模型只决定"何时调用、传什么参数"；服务端真正请求高德 Web 服务 API 并回写 tool_result；
-# 前端根据服务端下发的结构化数据（含静态地图 URL）渲染路线卡片。
+# ---------- 出行助手 / 外卖点餐模式 ----------
+# 服务封装分别在 amap.py（AmapService）、meituan.py（MeituanService）。
+# 模型只决定"何时调用、传什么参数"；服务端真正请求第三方 API 并回写 tool_result；
+# 前端根据服务端下发的结构化数据渲染路线/POI/门店/菜单卡片。
 amap = AmapService()
+meituan = MeituanService()
 
 
 def sse_event(obj) -> str:
@@ -270,35 +274,24 @@ async def a2ui_chat(request: Request):
     return await stream_chat(request, build_a2ui_system_prompt())
 
 
-@app.post('/api/agent/chat')
-async def agent_chat(request: Request):
-    """出行助手接口：携带高德工具，解析 tool_use 并执行，循环至模型给出最终回答"""
-    body = await request.json()
-    messages = body.get('messages')
-    if not isinstance(messages, list) or not messages:
-        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
-    err = missing_llm_config()
-    if err:
-        return err
-    if not amap.configured:
-        return JSONResponse(
-            {'error': '服务端未配置 AMAP_KEY，请在 server/.env 中填入高德 Web 服务 Key'},
-            status_code=500,
-        )
-
-    history = [{'role': m.get('role'), 'content': m.get('content')} for m in messages]
+def agent_stream(body: dict, service, system: str):
+    """通用 agent 循环：携带 service 的工具定义请求网关，解析 tool_use 并执行，
+    循环至模型给出最终回答；SSE 帧原样转发，同时下发工具状态与卡片事件。
+    service 需实现：tools / MAX_TOOL_ROUNDS / tool_label / card_event_type /
+    execute_tool / summarize_result（AmapService 与 MeituanService 均满足）。"""
+    history = [{'role': m.get('role'), 'content': m.get('content')} for m in body.get('messages', [])]
 
     async def generate():
         client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, read=None))
         try:
-            for _ in range(AmapService.MAX_TOOL_ROUNDS):
+            for _ in range(service.MAX_TOOL_ROUNDS):
                 payload = {
                     'model': body.get('model') or DEFAULT_MODEL_ID,
                     'messages': history,
                     'max_tokens': body.get('max_tokens', 4096),
                     'stream': True,
-                    'tools': amap.tools,
-                    'system': amap.system_prompt(),
+                    'tools': service.tools,
+                    'system': system,
                 }
                 try:
                     upstream = await client.send(
@@ -344,7 +337,7 @@ async def agent_chat(request: Request):
                                 blocks.append(current)
                                 yield sse_event({
                                     'type': 'tool_call', 'name': current['name'],
-                                    'label': amap.tool_label(current['name']),
+                                    'label': service.tool_label(current['name']),
                                     'status': 'calling',
                                 })
                             elif cb.get('type') == 'text':
@@ -382,17 +375,14 @@ async def agent_chat(request: Request):
                     assistant_content.append(
                         {'type': 'tool_use', 'id': block['id'], 'name': block['name'], 'input': tool_input}
                     )
-                    result, card = await amap.execute_tool(block['name'], tool_input)
+                    result, card = await service.execute_tool(block['name'], tool_input)
                     if card:
-                        # poi_list 走独立事件，客户端分别渲染 POI 列表卡片 / 路线卡片
-                        yield sse_event({
-                            'type': 'amap_poi_list' if card.get('kind') == 'poi_list' else 'amap_card',
-                            'card': card,
-                        })
+                        # 卡片走独立事件，事件类型由 service 决定（路线/POI/门店/菜单卡片）
+                        yield sse_event({'type': service.card_event_type(card), 'card': card})
                     yield sse_event({
                         'type': 'tool_call', 'name': block['name'],
-                        'label': amap.tool_label(block['name']),
-                        'status': 'done', 'summary': amap.summarize_result(block['name'], result),
+                        'label': service.tool_label(block['name']),
+                        'status': 'done', 'summary': service.summarize_result(block['name'], result),
                     })
                     results.append({
                         'type': 'tool_result', 'tool_use_id': block['id'],
@@ -414,6 +404,47 @@ async def agent_chat(request: Request):
             'X-Accel-Buffering': 'no',
         },
     )
+
+
+@app.post('/api/agent/chat')
+async def agent_chat(request: Request):
+    """出行助手接口：携带高德工具，解析 tool_use 并执行，循环至模型给出最终回答"""
+    body = await request.json()
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
+    err = missing_llm_config()
+    if err:
+        return err
+    if not amap.configured:
+        return JSONResponse(
+            {'error': '服务端未配置 AMAP_KEY，请在 server/.env 中填入高德 Web 服务 Key'},
+            status_code=500,
+        )
+    return agent_stream(body, amap, amap.system_prompt())
+
+
+@app.post('/api/food/chat')
+async def food_chat(request: Request):
+    """外卖点餐接口：携带美团工具执行搜索门店/查询菜单，并注入 A2UI 提示词渲染点餐界面；
+    未配置美团凭据时自动降级为本地演示数据（mock），可用 MEITUAN_MOCK=off 关闭"""
+    body = await request.json()
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
+    err = missing_llm_config()
+    if err:
+        return err
+    if not meituan.configured and not meituan.mock_enabled:
+        return JSONResponse(
+            {'error': '服务端未配置美团开放平台凭据，请在 server/.env 中填入 MEITUAN_APP_ID 与 MEITUAN_SECRET'},
+            status_code=500,
+        )
+    # A2UI 协议提示词 + 外卖工作流：工具结果 → A2UI 点餐界面 → 提交后给出下单深链
+    system = build_a2ui_system_prompt() + '\n\n' + meituan.system_prompt()
+    if meituan.mock_enabled:
+        system += build_mock_note()
+    return agent_stream(body, meituan, system)
 
 
 if __name__ == '__main__':

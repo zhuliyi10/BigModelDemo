@@ -5,6 +5,9 @@
 ## 功能特性
 
 - 💬 多轮对话，AI 回复**流式逐字渲染**
+- ⚡ **A2UI 场景**：AI 按 A2UI 协议实时生成可交互界面（表单、点单、预订），填写后一键提交
+- 🗺 **出行助手**：AI 以工具调用方式查询高德地图（地理编码 / POI / 路线规划），附交互式路线卡片
+- 🍜 **外卖点餐**：AI 调用美团外卖开放平台（搜索门店 → 展示菜单 → A2UI 点餐界面 → 跳转美团下单）；未配置美团凭据时自动降级为**本地演示数据**，全流程照常可演示
 - 🧠 回复内容支持 **Markdown** 渲染（代码块、表格、列表、引用等）
 - 🌓 **深色 / 浅色主题**一键切换，跟随系统偏好并本地记忆，无闪烁
 - 🤖 模型下拉框**动态加载**网关支持的模型列表（默认 `claude-4.6-sonnet`）
@@ -27,7 +30,9 @@
 BigModelDemo/
 ├── package.json            # 根配置，统一启动脚本（前端 npm workspace + 后端 uvicorn）
 ├── server/                 # 后端代理服务（FastAPI，默认端口 3001）
-│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/models、/api/health
+│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/food/chat、/api/models
+│   ├── amap.py             # 高德 Web 服务封装（出行助手工具执行器）
+│   ├── meituan.py          # 美团外卖开放平台封装（外卖点餐工具执行器 + 签名）
 │   ├── requirements.txt    # Python 依赖清单
 │   ├── .venv/              # Python 虚拟环境（不入库）
 │   ├── .env                # 真实密钥（不入库，需自行创建）
@@ -98,6 +103,9 @@ npm run dev:client   # 前端 http://localhost:5173
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/models` | 透传网关模型列表（`/v1/models`） |
 | POST | `/api/chat` | 问答接口，SSE 流式返回 |
+| POST | `/api/a2ui/chat` | A2UI 场景问答（注入 A2UI 系统提示词） |
+| POST | `/api/agent/chat` | 出行助手（高德工具调用循环），SSE 流式返回 |
+| POST | `/api/food/chat` | 外卖点餐（美团工具调用 + A2UI 点餐界面），SSE 流式返回 |
 
 `POST /api/chat` 请求体：
 
@@ -121,6 +129,11 @@ npm run dev:client   # 前端 http://localhost:5173
 | `MODEL_ID` | （可选） | 默认模型 ID，前端未指定模型时使用，并在模型列表中置顶 |
 | `GATEWAY_BASE` | — | 旧变量名，仍兼容（`ANTHROPIC_BASE_URL` 优先） |
 | `PORT` | `3001` | 后端端口 |
+| `AMAP_KEY` | （可选） | 高德 Web 服务 Key，出行助手模式必需 |
+| `AMAP_JS_KEY` / `AMAP_JS_SECURITY` | （可选） | 高德 JS API 凭据，配置后路线卡片升级为交互式底图 |
+| `MEITUAN_APP_ID` / `MEITUAN_SECRET` | （可选） | 美团外卖开放平台凭据；未配置时外卖点餐自动使用本地演示数据 |
+| `MEITUAN_MOCK` | 缺省自动 | `on` 强制演示数据 / `off` 强制真实 API；缺省时有凭据走真实、无凭据自动 mock |
+| `MEITUAN_BASE` | `https://waimaiopen.meituan.com` | 美团开放平台地址，沙箱联调时按官方文档替换 |
 
 ## 生产构建
 

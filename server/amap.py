@@ -190,6 +190,11 @@ class AmapService:
         return TOOL_LABELS.get(name, name)
 
     @staticmethod
+    def card_event_type(card: dict) -> str:
+        """卡片下发的事件类型：poi_list 与路线卡片走独立事件，客户端分别渲染"""
+        return 'amap_poi_list' if card.get('kind') == 'poi_list' else 'amap_card'
+
+    @staticmethod
     def js_config() -> dict:
         """前端高德 JS API 配置：配置后底图升级为交互式地图，未配置时前端回退静态图"""
         return {

@@ -1373,3 +1373,67 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* ---------- 外卖点餐（美团）卡片 ---------- */
+
+.mt-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mt-menu-item {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.mt-menu-item.sold-out {
+  opacity: 0.55;
+}
+
+.mt-price {
+  color: #ffb54d;
+  font-weight: 700;
+}
+
+.mt-sold-out {
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 400;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  color: var(--text-dim);
+}
+
+.mt-order-btn {
+  display: block;
+  margin-top: 10px;
+  padding: 9px 14px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  background: #ffb000;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: opacity 0.15s ease;
+}
+
+.mt-order-btn:hover {
+  opacity: 0.88;
+}
+
+.mt-demo-badge {
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-dim);
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  vertical-align: 1px;
+}
