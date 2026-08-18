@@ -7,7 +7,8 @@
 - 💬 多轮对话，AI 回复**流式逐字渲染**
 - ⚡ **A2UI 场景**：AI 按 A2UI 协议实时生成可交互界面（表单、点单、预订），填写后一键提交
 - 🗺 **出行助手**：AI 以工具调用方式查询高德地图（地理编码 / POI / 路线规划），附交互式路线卡片
-- 🍜 **外卖点餐**：AI 调用美团外卖开放平台（搜索门店 → 展示菜单 → A2UI 点餐界面 → 跳转美团下单）；未配置美团凭据时自动降级为**本地演示数据**，全流程照常可演示
+- 🏨 **美团酒旅**：AI 调用官方美团酒旅 Skill（`meituan-travel`，景点/酒店/机票/火车票/门票/行程规划），真实供给数据，个人开发者 Token 即可接入
+- 🛵 **美团跑腿**：AI 调用官方美团跑腿 Skill（`meituan-paotui`，帮取送/帮买/帮忙），地址簿匹配 + POI 搜索 + 费用预览，**两步确认真实下单**
 - 🌤 **天气查询**：AI 工具调用 Open-Meteo（免凭据），当前实况 + 7 天逐日预报，附天气卡片与穿衣出行建议
 - 🧠 回复内容支持 **Markdown** 渲染（代码块、表格、列表、引用等）
 - 🌓 **深色 / 浅色主题**一键切换，跟随系统偏好并本地记忆，无闪烁
@@ -31,9 +32,10 @@
 BigModelDemo/
 ├── package.json            # 根配置，统一启动脚本（前端 npm workspace + 后端 uvicorn）
 ├── server/                 # 后端代理服务（FastAPI，默认端口 3001）
-│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/food/chat、/api/models
+│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/travel/chat、/api/paotui/chat、/api/models
 │   ├── amap.py             # 高德 Web 服务封装（出行助手工具执行器）
-│   ├── meituan.py          # 美团外卖开放平台封装（外卖点餐工具执行器 + 签名）
+│   ├── mttravel.py         # 美团酒旅 Skill 封装（mttravel CLI 工具执行器）
+│   ├── paotui.py           # 美团跑腿 Skill 封装（paotui.js CLI 执行器，两步确认下单）
 │   ├── weather.py          # Open-Meteo 天气封装（天气查询工具执行器，免凭据）
 │   ├── requirements.txt    # Python 依赖清单
 │   ├── .venv/              # Python 虚拟环境（不入库）
@@ -85,6 +87,21 @@ ANTHROPIC_BASE_URL=https://open.bigmodel.cn/api/anthropic
 
 > ⚠️ `.env` 已加入 `.gitignore`，请勿将密钥提交到 Git。
 
+**可选：启用「美团酒旅」模式**
+
+```bash
+# 安装官方美团酒旅 Skill CLI
+npm i -g @meituan-travel/travel-cli
+```
+
+然后到美团开发者中心（https://developer.meituan.com/zh/v2/dev/doc）以**个人开发者**身份创建 Token，填入 `server/.env` 的 `MEITUAN_TOKEN`（或首次运行 `mttravel` 时按其引导配置）。
+
+**可选：启用「美团跑腿」模式**
+
+1. 从美团开放平台 AI Hub 下载 `meituan-paotui` Skill 源文件包，解压到 `server/skills/meituan-paotui`（或用 `MEITUAN_PAOTUI_DIR` 指定路径），确保 `paotui.js` 位于该目录下
+2. 安装授权依赖 CLI：`bash server/skills/meituan-paotui/references/meituan-passport-user-auth/scripts/install.sh`（本地 tgz 安装 `pt-passport`）
+3. 首次对话时模型会返回授权链接，用美团 App 扫码完成账号授权（Token 缓存 30 天）即可下单
+
 ### 4. 启动
 
 ```bash
@@ -107,7 +124,8 @@ npm run dev:client   # 前端 http://localhost:5173
 | POST | `/api/chat` | 问答接口，SSE 流式返回 |
 | POST | `/api/a2ui/chat` | A2UI 场景问答（注入 A2UI 系统提示词） |
 | POST | `/api/agent/chat` | 出行助手（高德工具调用循环），SSE 流式返回 |
-| POST | `/api/food/chat` | 外卖点餐（美团工具调用 + A2UI 点餐界面），SSE 流式返回 |
+| POST | `/api/travel/chat` | 美团酒旅（meituan-travel Skill CLI 工具调用），SSE 流式返回 |
+| POST | `/api/paotui/chat` | 美团跑腿（meituan-paotui Skill CLI 工具调用，两步确认下单），SSE 流式返回 |
 | POST | `/api/weather/chat` | 天气查询（Open-Meteo 工具调用，免凭据），SSE 流式返回 |
 
 `POST /api/chat` 请求体：
@@ -134,9 +152,11 @@ npm run dev:client   # 前端 http://localhost:5173
 | `PORT` | `3001` | 后端端口 |
 | `AMAP_KEY` | （可选） | 高德 Web 服务 Key，出行助手模式必需 |
 | `AMAP_JS_KEY` / `AMAP_JS_SECURITY` | （可选） | 高德 JS API 凭据，配置后路线卡片升级为交互式底图 |
-| `MEITUAN_APP_ID` / `MEITUAN_SECRET` | （可选） | 美团外卖开放平台凭据；未配置时外卖点餐自动使用本地演示数据 |
-| `MEITUAN_MOCK` | 缺省自动 | `on` 强制演示数据 / `off` 强制真实 API；缺省时有凭据走真实、无凭据自动 mock |
-| `MEITUAN_BASE` | `https://waimaiopen.meituan.com` | 美团开放平台地址，沙箱联调时按官方文档替换 |
+| `MEITUAN_TOKEN` | （可选） | 美团酒旅 Skill Token（美团开发者中心 → 个人开发者控制台 → Token 管理）；未配置时回退 `mttravel` CLI 自身的 `~/.config/meituan-travel/config.json` |
+| `MTTRAVEL_TIMEOUT` | `150` | 美团酒旅 CLI 单次查询超时（秒） |
+| `MEITUAN_PAOTUI_DIR` | `server/skills/meituan-paotui` | 美团跑腿 Skill 包路径（AI Hub 下载解压） |
+| `MEITUAN_PASSPORT_TOKEN` | （可选） | 美团用户授权 Token（注入为 `MCP_ACCESS_TOKEN`）；未配置时首次使用走扫码授权 |
+| `PAOTUI_TIMEOUT` / `PAOTUI_CONFIRM_TIMEOUT` | `120` / `620` | 跑腿命令超时（秒）；后者为扫码授权等待 |
 
 ## 生产构建
 

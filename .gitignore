@@ -6,3 +6,4 @@ dist/
 .env.local
 .venv/
 __pycache__/
+server/skills/

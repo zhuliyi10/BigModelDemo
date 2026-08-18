@@ -6,7 +6,8 @@
 - POST /api/chat       通用流式问答
 - POST /api/a2ui/chat  A2UI 场景问答（注入 A2UI 系统提示词）
 - POST /api/agent/chat 出行助手问答（模型以工具调用方式调用高德服务）
-- POST /api/food/chat  外卖点餐问答（美团开放平台工具 + A2UI 点餐界面）
+- POST /api/travel/chat 美团酒旅问答（meituan-travel Skill CLI 工具调用）
+- POST /api/paotui/chat 美团跑腿问答（meituan-paotui Skill CLI 工具调用，两步确认下单）
 - POST /api/weather/chat 天气查询问答（Open-Meteo 工具调用，免凭据）
 """
 
@@ -23,7 +24,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from amap import AmapService
-from meituan import MeituanService, build_mock_note
+from mttravel import TravelService
+from paotui import PaotuiService
 from weather import WeatherService
 
 # 从 server/.env 加载环境变量（.env 不入库，见 .gitignore）
@@ -173,12 +175,14 @@ updateComponents 完整示例（注意：components 必须包含一个根容器 
 当用户消息以 "[A2UI_EVENT]" 开头时，表示用户刚在界面上完成操作，消息中包含界面提交的 JSON 数据：请基于数据直接给出简短的中文确认或处理结果，用普通文本（可用 Markdown）回复，不要再生成界面。"""
 
 
-# ---------- 出行助手 / 外卖点餐 / 天气查询模式 ----------
-# 服务封装分别在 amap.py（AmapService）、meituan.py（MeituanService）、weather.py（WeatherService）。
+# ---------- 出行助手 / 美团酒旅 / 美团跑腿 / 天气查询模式 ----------
+# 服务封装分别在 amap.py（AmapService）、mttravel.py（TravelService）、
+# paotui.py（PaotuiService）、weather.py（WeatherService）。
 # 模型只决定"何时调用、传什么参数"；服务端真正请求第三方 API 并回写 tool_result；
-# 前端根据服务端下发的结构化数据渲染路线/POI/门店/菜单/天气卡片。
+# 前端根据服务端下发的结构化数据渲染路线/POI/酒旅/天气卡片。
 amap = AmapService()
-meituan = MeituanService()
+travel = TravelService()
+paotui = PaotuiService()
 weather = WeatherService()
 
 
@@ -281,7 +285,7 @@ def agent_stream(body: dict, service, system: str):
     """通用 agent 循环：携带 service 的工具定义请求网关，解析 tool_use 并执行，
     循环至模型给出最终回答；SSE 帧原样转发，同时下发工具状态与卡片事件。
     service 需实现：tools / MAX_TOOL_ROUNDS / tool_label / card_event_type /
-    execute_tool / summarize_result（AmapService 与 MeituanService 均满足）。"""
+    execute_tool / summarize_result（AmapService / TravelService / WeatherService 均满足）。"""
     history = [{'role': m.get('role'), 'content': m.get('content')} for m in body.get('messages', [])]
 
     async def generate():
@@ -427,10 +431,10 @@ async def agent_chat(request: Request):
     return agent_stream(body, amap, amap.system_prompt())
 
 
-@app.post('/api/food/chat')
-async def food_chat(request: Request):
-    """外卖点餐接口：携带美团工具执行搜索门店/查询菜单，并注入 A2UI 提示词渲染点餐界面；
-    未配置美团凭据时自动降级为本地演示数据（mock），可用 MEITUAN_MOCK=off 关闭"""
+@app.post('/api/travel/chat')
+async def travel_chat(request: Request):
+    """美团酒旅接口：携带 mt_travel_query 工具执行官方 meituan-travel Skill（mttravel CLI），
+    覆盖酒店/机票/火车票/门票/行程规划；需安装 CLI 并配置 Token（MEITUAN_TOKEN）"""
     body = await request.json()
     messages = body.get('messages')
     if not isinstance(messages, list) or not messages:
@@ -438,16 +442,38 @@ async def food_chat(request: Request):
     err = missing_llm_config()
     if err:
         return err
-    if not meituan.configured and not meituan.mock_enabled:
+    if not travel.cli_available:
         return JSONResponse(
-            {'error': '服务端未配置美团开放平台凭据，请在 server/.env 中填入 MEITUAN_APP_ID 与 MEITUAN_SECRET'},
+            {'error': '服务端未安装美团酒旅 CLI，请执行：npm i -g @meituan-travel/travel-cli'},
             status_code=500,
         )
-    # A2UI 协议提示词 + 外卖工作流：工具结果 → A2UI 点餐界面 → 提交后给出下单深链
-    system = build_a2ui_system_prompt() + '\n\n' + meituan.system_prompt()
-    if meituan.mock_enabled:
-        system += build_mock_note()
-    return agent_stream(body, meituan, system)
+    if not travel.configured:
+        return JSONResponse(
+            {'error': '未配置美团酒旅 Token：请在美团开发者中心个人开发者控制台创建 Token，并填入 server/.env 的 MEITUAN_TOKEN'},
+            status_code=500,
+        )
+    return agent_stream(body, travel, travel.system_prompt())
+
+
+@app.post('/api/paotui/chat')
+async def paotui_chat(request: Request):
+    """美团跑腿接口：携带跑腿 Skill 工具（授权/地址簿/POI/预览/提交/订单查询），
+    真实下单场景，系统提示词强制两步确认门控"""
+    body = await request.json()
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
+    err = missing_llm_config()
+    if err:
+        return err
+    if not paotui.configured:
+        return JSONResponse(
+            {'error': f'服务端未部署美团跑腿 Skill 包：请从美团开放平台 AI Hub 下载 meituan-paotui 并解压到 {paotui.skill_dir}（或用 MEITUAN_PAOTUI_DIR 指定）'},
+            status_code=500,
+        )
+    # 叠加 A2UI 协议提示词：跑腿场景用表单收集订单信息、费用确认
+    system = build_a2ui_system_prompt() + '\n\n' + paotui.system_prompt()
+    return agent_stream(body, paotui, system)
 
 
 @app.post('/api/weather/chat')

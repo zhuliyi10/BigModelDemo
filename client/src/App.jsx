@@ -37,11 +37,12 @@ const AGENT_SUGGESTIONS = [
   '帮我找上海人民广场附近的 3 家热门餐厅',
 ];
 
-// 外卖点餐推荐问题：触发模型调用美团工具 + A2UI 点餐界面
-const FOOD_SUGGESTIONS = [
-  '我想点外卖，帮我找找有什么火锅门店',
-  '搜一下附近有哪些可以点外卖的店',
-  '看看第一家店的菜单，帮我点个餐',
+// 美团酒旅推荐问题：触发模型调用官方 meituan-travel Skill
+const TRAVEL_SUGGESTIONS = [
+  '推荐几个北京必去的景点',
+  '上海外滩附近有哪些五星酒店',
+  '帮我规划昆明大理丽江 3 日游行程',
+  '查一下明天北京到上海的高铁',
 ];
 
 // 天气查询推荐问题：触发模型调用 Open-Meteo 工具
@@ -49,6 +50,13 @@ const WEATHER_SUGGESTIONS = [
   '深圳未来几天天气怎么样',
   '杭州明天会下雨吗',
   '这周末北京适合户外活动吗',
+];
+
+// 美团跑腿推荐问题：触发模型调用官方 meituan-paotui Skill
+const PAOTUI_SUGGESTIONS = [
+  '帮我把一份合同从公司送到家',
+  '帮我买杯咖啡送到办公室',
+  '查一下我上一个跑腿订单的状态',
 ];
 
 /** 解析 SSE 缓冲区，返回 [完整事件数组, 剩余缓冲] */
@@ -299,89 +307,35 @@ function PoiListCard({ card }) {
   );
 }
 
-/** 外卖门店列表卡片：名称/起送价/配送费/营业时段，整条可点击跳转美团外卖下单页 */
-function MeituanShopListCard({ card }) {
-  const shops = Array.isArray(card.shops) ? card.shops : [];
+/** 美团跑腿授权卡片：首次使用时展示授权链接，用户美团 App 扫码完成 */
+function PaotuiAuthCard({ card }) {
   return (
     <div className="amap-card">
       <div className="amap-route">
-        <div className="amap-route-title">
-          🛵 {card.title}
-          {card.demo && <span className="mt-demo-badge">演示数据</span>}
-        </div>
-        <div className="poi-list">
-          {shops.map((s, i) => (
-            <a
-              key={s.app_poi_code || i}
-              className="poi-item"
-              href={s.order_url}
-              target="_blank"
-              rel="noreferrer"
-              title="在美团外卖中查看"
-            >
-              {s.pic ? (
-                <div className="poi-photo-wrap">
-                  <img className="poi-photo" src={s.pic} alt={s.name} loading="lazy" />
-                  <span className="poi-watermark">美团外卖</span>
-                </div>
-              ) : (
-                <div className="poi-photo poi-photo-empty">🍜</div>
-              )}
-              <div className="poi-info">
-                <div className="poi-name">{s.name}</div>
-                <div className="poi-meta">
-                  {s.min_price != null && <span>¥{s.min_price} 起送</span>}
-                  {s.shipping_fee != null && <span> · 配送费 ¥{s.shipping_fee}</span>}
-                  <span className="poi-dist">{s.open || ''}</span>
-                </div>
-                {s.address && <div className="poi-addr">{s.address}</div>}
-              </div>
-            </a>
-          ))}
-        </div>
+        <div className="amap-route-title">🛵 {card.title || '美团跑腿授权'}</div>
+        <p className="pt-auth-tip">使用跑腿服务需先完成美团账号授权，点击下方链接用美团 App 扫码/打开，完成后告诉我即可继续。</p>
+        {card.auth_link && (
+          <a className="pt-auth-btn" href={card.auth_link} target="_blank" rel="noreferrer">
+            点击前往授权 →
+          </a>
+        )}
       </div>
     </div>
   );
 }
 
-/** 外卖菜单卡片：真实菜品名称/价格/描述，底部「去美团下单」按钮跳转下单页 */
-function MeituanMenuCard({ card }) {
-  const foods = Array.isArray(card.foods) ? card.foods : [];
+/** 美团酒旅结果卡片：官方 Skill 返回的 Markdown 富文本（含图片/链接），原样渲染 */
+function MeituanTravelCard({ card }) {
   return (
     <div className="amap-card">
       <div className="amap-route">
         <div className="amap-route-title">
-          📋 {card.title}
-          {card.demo && <span className="mt-demo-badge">演示数据</span>}
+          🏨 {card.title || '美团酒旅'}
+          {card.city && <span className="mt-travel-city">· {card.city}</span>}
         </div>
-        <div className="mt-menu">
-          {foods.map((f, i) => (
-            <div key={f.app_food_code || i} className={`mt-menu-item${f.is_sold_out ? ' sold-out' : ''}`}>
-              {f.pic ? (
-                <img className="poi-photo" src={f.pic} alt={f.name} loading="lazy" />
-              ) : (
-                <div className="poi-photo poi-photo-empty">🍽</div>
-              )}
-              <div className="poi-info">
-                <div className="poi-name">
-                  {f.name}
-                  {f.is_sold_out && <span className="mt-sold-out">已售罄</span>}
-                </div>
-                <div className="poi-meta">
-                  <span className="mt-price">¥{f.price}</span>
-                  {f.unit && <span>/{f.unit}</span>}
-                  {f.category_name && <span className="poi-type">· {f.category_name}</span>}
-                </div>
-                {f.description && <div className="poi-quote">{f.description}</div>}
-              </div>
-            </div>
-          ))}
+        <div className="mt-travel markdown">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{card.content || ''}</ReactMarkdown>
         </div>
-        {card.order_url && (
-          <a className="mt-order-btn" href={card.order_url} target="_blank" rel="noreferrer">
-            去美团外卖下单 →
-          </a>
-        )}
       </div>
     </div>
   );
@@ -494,10 +448,10 @@ export default function App() {
   const [models, setModels] = useState(FALLBACK_MODELS);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [loading, setLoading] = useState(false);
-  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；food = 外卖点餐；weather = 天气查询
+  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询
   const [mode, setMode] = useState('chat');
-  const agentLike = mode === 'agent' || mode === 'food' || mode === 'weather';
-  const a2uiLike = mode === 'a2ui' || mode === 'food';
+  const agentLike = mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather';
+  const a2uiLike = mode === 'a2ui';
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -547,6 +501,11 @@ export default function App() {
     setMessages([]);
   };
 
+  // 移动端标签栏横向滑动时，把当前激活标签滚入可视区
+  useEffect(() => {
+    document.querySelector('.mode-tab.active')?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }, [mode]);
+
   /** A2UI 界面事件：用户点击按钮后，把界面数据作为新消息回传给模型 */
   const handleA2UIEvent = (event) => {
     if (loading) return;
@@ -572,11 +531,13 @@ export default function App() {
           ? '/api/a2ui/chat'
           : mode === 'agent'
             ? '/api/agent/chat'
-            : mode === 'food'
-              ? '/api/food/chat'
-              : mode === 'weather'
-                ? '/api/weather/chat'
-                : '/api/chat';
+            : mode === 'travel'
+              ? '/api/travel/chat'
+              : mode === 'paotui'
+                ? '/api/paotui/chat'
+                : mode === 'weather'
+                  ? '/api/weather/chat'
+                  : '/api/chat';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -636,10 +597,14 @@ export default function App() {
             // 出行助手：高德卡片（路线卡片 / POI 列表卡片，服务端按 kind 拆分事件）
             const card = event.card;
             setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, amapCard: card } : m)));
-          } else if (event.type === 'meituan_card') {
-            // 外卖点餐：美团卡片（门店列表 / 菜单，服务端按 kind 区分）
+          } else if (event.type === 'mt_travel_card') {
+            // 美团酒旅：官方 Skill 返回的 Markdown 结果卡片（含图片/链接）
             const card = event.card;
-            setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, meituanCard: card } : m)));
+            setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, travelCard: card } : m)));
+          } else if (event.type === 'paotui_card') {
+            // 美团跑腿：授权卡片（首次使用展示授权链接）
+            const card = event.card;
+            setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, paotuiCard: card } : m)));
           } else if (event.type === 'weather_card') {
             // 天气查询：天气卡片（当前实况 + 7 天逐日预报）
             const card = event.card;
@@ -700,8 +665,11 @@ export default function App() {
           <button className={`mode-tab${mode === 'agent' ? ' active' : ''}`} onClick={() => switchMode('agent')} disabled={loading}>
             🗺 出行助手
           </button>
-          <button className={`mode-tab${mode === 'food' ? ' active' : ''}`} onClick={() => switchMode('food')} disabled={loading}>
-            🍜 外卖点餐
+          <button className={`mode-tab${mode === 'travel' ? ' active' : ''}`} onClick={() => switchMode('travel')} disabled={loading}>
+            🏨 美团酒旅
+          </button>
+          <button className={`mode-tab${mode === 'paotui' ? ' active' : ''}`} onClick={() => switchMode('paotui')} disabled={loading}>
+            🛵 美团跑腿
           </button>
           <button className={`mode-tab${mode === 'weather' ? ' active' : ''}`} onClick={() => switchMode('weather')} disabled={loading}>
             🌤 天气查询
@@ -733,9 +701,11 @@ export default function App() {
                 ? '让 AI 为你生成一个界面'
                 : mode === 'agent'
                   ? '说出目的地，AI 调高德查路线'
-                  : mode === 'food'
-                    ? '想吃什么？AI 帮你搜店点餐'
-                    : mode === 'weather'
+                  : mode === 'travel'
+                    ? '想去哪玩？AI 查酒店机票做攻略'
+                    : mode === 'paotui'
+                      ? '同城急事？AI 帮你叫骑手'
+                      : mode === 'weather'
                       ? '问一句，AI 查实时天气'
                       : '有什么可以帮你的？'}
             </h2>
@@ -744,9 +714,11 @@ export default function App() {
                 ? 'AI 将根据需求实时生成可交互界面（A2UI 协议），填写后一键提交'
                 : mode === 'agent'
                   ? 'AI 通过工具调用实时查询高德地图（地理编码 / 路线规划 / POI 搜索），并附路线卡片'
-                  : mode === 'food'
-                    ? 'AI 调用美团开放平台搜索门店、展示菜单，生成 A2UI 点餐界面，一键跳转下单'
-                    : mode === 'weather'
+                  : mode === 'travel'
+                    ? 'AI 调用官方美团酒旅 Skill（景点/酒店/机票/火车票/门票/行程规划），真实供给数据'
+                    : mode === 'paotui'
+                      ? 'AI 调用官方美团跑腿 Skill（帮取送/帮买/帮忙），费用预览 + 两步确认，真实下单'
+                      : mode === 'weather'
                       ? 'AI 通过工具调用实时查询 Open-Meteo（当前实况 + 7 天预报），并附天气卡片'
                       : '选择一个话题开始，或直接输入你的问题'}
             </p>
@@ -755,11 +727,13 @@ export default function App() {
                 ? A2UI_SUGGESTIONS
                 : mode === 'agent'
                   ? AGENT_SUGGESTIONS
-                  : mode === 'food'
-                    ? FOOD_SUGGESTIONS
-                    : mode === 'weather'
-                      ? WEATHER_SUGGESTIONS
-                      : SUGGESTIONS
+                  : mode === 'travel'
+                    ? TRAVEL_SUGGESTIONS
+                    : mode === 'paotui'
+                      ? PAOTUI_SUGGESTIONS
+                      : mode === 'weather'
+                        ? WEATHER_SUGGESTIONS
+                        : SUGGESTIONS
               ).map((s) => (
                 <button key={s} className="chip" onClick={() => send(s)} disabled={loading}>
                   {s}
@@ -783,7 +757,7 @@ export default function App() {
                   {msg.role === 'assistant' ? (
                     msg.content ||
                     (agentLike &&
-                      ((msg.tools || []).length > 0 || msg.amapCard || msg.meituanCard || msg.weatherCard)) ? (
+                      ((msg.tools || []).length > 0 || msg.amapCard || msg.travelCard || msg.paotuiCard || msg.weatherCard)) ? (
                       <>
                         {agentLike && (msg.tools || []).length > 0 && (
                           <div className="tool-chips">
@@ -801,12 +775,8 @@ export default function App() {
                           ) : (
                             <AmapCard card={msg.amapCard} />
                           ))}
-                        {agentLike && msg.meituanCard &&
-                          (msg.meituanCard.kind === 'shop_list' ? (
-                            <MeituanShopListCard card={msg.meituanCard} />
-                          ) : (
-                            <MeituanMenuCard card={msg.meituanCard} />
-                          ))}
+                        {agentLike && msg.travelCard && <MeituanTravelCard card={msg.travelCard} />}
+                        {agentLike && msg.paotuiCard && <PaotuiAuthCard card={msg.paotuiCard} />}
                         {agentLike && msg.weatherCard && <WeatherCard card={msg.weatherCard} />}
                         {msg.content &&
                           (a2uiLike ? (
@@ -881,9 +851,11 @@ export default function App() {
             ? 'A2UI 模式：AI 生成可交互界面'
             : mode === 'agent'
               ? '出行助手模式：AI 工具调用高德服务'
-              : mode === 'food'
-                ? '外卖点餐模式：AI 工具调用美团开放平台'
-                : mode === 'weather'
+              : mode === 'travel'
+                ? '美团酒旅模式：AI 工具调用官方 meituan-travel Skill'
+                : mode === 'paotui'
+                  ? '美团跑腿模式：AI 工具调用官方 meituan-paotui Skill'
+                  : mode === 'weather'
                   ? '天气查询模式：AI 工具调用 Open-Meteo'
                   : '文本对话模式'} · 当前模型：{model}
         </p>
