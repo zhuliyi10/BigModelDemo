@@ -7,6 +7,7 @@
 - POST /api/a2ui/chat  A2UI 场景问答（注入 A2UI 系统提示词）
 - POST /api/agent/chat 出行助手问答（模型以工具调用方式调用高德服务）
 - POST /api/food/chat  外卖点餐问答（美团开放平台工具 + A2UI 点餐界面）
+- POST /api/weather/chat 天气查询问答（Open-Meteo 工具调用，免凭据）
 """
 
 import asyncio
@@ -23,6 +24,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from amap import AmapService
 from meituan import MeituanService, build_mock_note
+from weather import WeatherService
 
 # 从 server/.env 加载环境变量（.env 不入库，见 .gitignore）
 BASE_DIR = Path(__file__).resolve().parent
@@ -171,12 +173,13 @@ updateComponents 完整示例（注意：components 必须包含一个根容器 
 当用户消息以 "[A2UI_EVENT]" 开头时，表示用户刚在界面上完成操作，消息中包含界面提交的 JSON 数据：请基于数据直接给出简短的中文确认或处理结果，用普通文本（可用 Markdown）回复，不要再生成界面。"""
 
 
-# ---------- 出行助手 / 外卖点餐模式 ----------
-# 服务封装分别在 amap.py（AmapService）、meituan.py（MeituanService）。
+# ---------- 出行助手 / 外卖点餐 / 天气查询模式 ----------
+# 服务封装分别在 amap.py（AmapService）、meituan.py（MeituanService）、weather.py（WeatherService）。
 # 模型只决定"何时调用、传什么参数"；服务端真正请求第三方 API 并回写 tool_result；
-# 前端根据服务端下发的结构化数据渲染路线/POI/门店/菜单卡片。
+# 前端根据服务端下发的结构化数据渲染路线/POI/门店/菜单/天气卡片。
 amap = AmapService()
 meituan = MeituanService()
+weather = WeatherService()
 
 
 def sse_event(obj) -> str:
@@ -445,6 +448,19 @@ async def food_chat(request: Request):
     if meituan.mock_enabled:
         system += build_mock_note()
     return agent_stream(body, meituan, system)
+
+
+@app.post('/api/weather/chat')
+async def weather_chat(request: Request):
+    """天气查询接口：携带 Open-Meteo 工具（城市定位 + 7 天预报），免凭据开箱即用"""
+    body = await request.json()
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
+    err = missing_llm_config()
+    if err:
+        return err
+    return agent_stream(body, weather, weather.system_prompt())
 
 
 if __name__ == '__main__':

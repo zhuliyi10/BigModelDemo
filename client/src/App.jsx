@@ -44,6 +44,13 @@ const FOOD_SUGGESTIONS = [
   '看看第一家店的菜单，帮我点个餐',
 ];
 
+// 天气查询推荐问题：触发模型调用 Open-Meteo 工具
+const WEATHER_SUGGESTIONS = [
+  '深圳未来几天天气怎么样',
+  '杭州明天会下雨吗',
+  '这周末北京适合户外活动吗',
+];
+
 /** 解析 SSE 缓冲区，返回 [完整事件数组, 剩余缓冲] */
 function parseSSE(buffer) {
   const events = [];
@@ -380,6 +387,48 @@ function MeituanMenuCard({ card }) {
   );
 }
 
+/** 天气卡片：当前实况（图标/气温/体感/湿度/风）+ 7 天逐日预报 */
+function WeatherCard({ card }) {
+  const cur = card.current || {};
+  const days = Array.isArray(card.days) ? card.days : [];
+  return (
+    <div className="amap-card">
+      <div className="amap-route">
+        <div className="amap-route-title">🌤 {card.title}</div>
+        {cur.temperature != null && (
+          <div className="wx-hero">
+            <span className="wx-hero-icon">{cur.icon}</span>
+            <div className="wx-hero-main">
+              <div className="wx-hero-temp">{Math.round(cur.temperature)}°</div>
+              <div className="wx-hero-desc">{cur.weather}</div>
+            </div>
+            <div className="wx-hero-meta">
+              {cur.feels_like != null && <span>体感 {Math.round(cur.feels_like)}°</span>}
+              {cur.humidity != null && <span>湿度 {cur.humidity}%</span>}
+              {cur.wind_speed != null && <span>风速 {cur.wind_speed} km/h</span>}
+            </div>
+          </div>
+        )}
+        <div className="wx-days">
+          {days.map((d, i) => (
+            <div key={d.date || i} className="wx-day">
+              <span className="wx-day-week">{d.weekday || d.date}</span>
+              <span className="wx-day-icon">{d.icon}</span>
+              <span className="wx-day-desc">{d.weather}</span>
+              <span className="wx-day-temp">
+                {d.tmin != null && <em>{Math.round(d.tmin)}°</em>}
+                {d.tmax != null && <b>{Math.round(d.tmax)}°</b>}
+              </span>
+              {d.precip_prob != null && d.precip_prob > 0 && <span className="wx-day-rain">💧{d.precip_prob}%</span>}
+            </div>
+          ))}
+        </div>
+        {card.source && <div className="wx-source">数据来源：{card.source}</div>}
+      </div>
+    </div>
+  );
+}
+
 /** 高德路线卡片：交互/静态底图 + 分段行程；静态图可点击跳转高德官方路线页 */
 function AmapCard({ card }) {
   const [cfg, setCfg] = useState(null);
@@ -445,9 +494,9 @@ export default function App() {
   const [models, setModels] = useState(FALLBACK_MODELS);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [loading, setLoading] = useState(false);
-  // 交互模式：chat = 纯文本问答；a2ui = 模型生成可交互界面；agent = 出行助手；food = 外卖点餐
+  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；food = 外卖点餐；weather = 天气查询
   const [mode, setMode] = useState('chat');
-  const agentLike = mode === 'agent' || mode === 'food';
+  const agentLike = mode === 'agent' || mode === 'food' || mode === 'weather';
   const a2uiLike = mode === 'a2ui' || mode === 'food';
   const abortRef = useRef(null);
   const listRef = useRef(null);
@@ -519,7 +568,15 @@ export default function App() {
 
     try {
       const endpoint =
-        mode === 'a2ui' ? '/api/a2ui/chat' : mode === 'agent' ? '/api/agent/chat' : mode === 'food' ? '/api/food/chat' : '/api/chat';
+        mode === 'a2ui'
+          ? '/api/a2ui/chat'
+          : mode === 'agent'
+            ? '/api/agent/chat'
+            : mode === 'food'
+              ? '/api/food/chat'
+              : mode === 'weather'
+                ? '/api/weather/chat'
+                : '/api/chat';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -583,6 +640,10 @@ export default function App() {
             // 外卖点餐：美团卡片（门店列表 / 菜单，服务端按 kind 区分）
             const card = event.card;
             setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, meituanCard: card } : m)));
+          } else if (event.type === 'weather_card') {
+            // 天气查询：天气卡片（当前实况 + 7 天逐日预报）
+            const card = event.card;
+            setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, weatherCard: card } : m)));
           } else if (event.type === 'error') {
             throw new Error(extractError(event));
           }
@@ -642,6 +703,9 @@ export default function App() {
           <button className={`mode-tab${mode === 'food' ? ' active' : ''}`} onClick={() => switchMode('food')} disabled={loading}>
             🍜 外卖点餐
           </button>
+          <button className={`mode-tab${mode === 'weather' ? ' active' : ''}`} onClick={() => switchMode('weather')} disabled={loading}>
+            🌤 天气查询
+          </button>
         </div>
         <div className="header-actions">
           <button className="btn-theme" onClick={toggleTheme} title={theme === 'dark' ? '切换明亮模式' : '切换深色模式'}>
@@ -671,7 +735,9 @@ export default function App() {
                   ? '说出目的地，AI 调高德查路线'
                   : mode === 'food'
                     ? '想吃什么？AI 帮你搜店点餐'
-                    : '有什么可以帮你的？'}
+                    : mode === 'weather'
+                      ? '问一句，AI 查实时天气'
+                      : '有什么可以帮你的？'}
             </h2>
             <p>
               {mode === 'a2ui'
@@ -680,7 +746,9 @@ export default function App() {
                   ? 'AI 通过工具调用实时查询高德地图（地理编码 / 路线规划 / POI 搜索），并附路线卡片'
                   : mode === 'food'
                     ? 'AI 调用美团开放平台搜索门店、展示菜单，生成 A2UI 点餐界面，一键跳转下单'
-                    : '选择一个话题开始，或直接输入你的问题'}
+                    : mode === 'weather'
+                      ? 'AI 通过工具调用实时查询 Open-Meteo（当前实况 + 7 天预报），并附天气卡片'
+                      : '选择一个话题开始，或直接输入你的问题'}
             </p>
             <div className="suggestions">
               {(mode === 'a2ui'
@@ -689,7 +757,9 @@ export default function App() {
                   ? AGENT_SUGGESTIONS
                   : mode === 'food'
                     ? FOOD_SUGGESTIONS
-                    : SUGGESTIONS
+                    : mode === 'weather'
+                      ? WEATHER_SUGGESTIONS
+                      : SUGGESTIONS
               ).map((s) => (
                 <button key={s} className="chip" onClick={() => send(s)} disabled={loading}>
                   {s}
@@ -712,7 +782,8 @@ export default function App() {
                 <div className={`msg-bubble${msg.error ? ' msg-error' : ''}`}>
                   {msg.role === 'assistant' ? (
                     msg.content ||
-                    (agentLike && ((msg.tools || []).length > 0 || msg.amapCard || msg.meituanCard)) ? (
+                    (agentLike &&
+                      ((msg.tools || []).length > 0 || msg.amapCard || msg.meituanCard || msg.weatherCard)) ? (
                       <>
                         {agentLike && (msg.tools || []).length > 0 && (
                           <div className="tool-chips">
@@ -736,6 +807,7 @@ export default function App() {
                           ) : (
                             <MeituanMenuCard card={msg.meituanCard} />
                           ))}
+                        {agentLike && msg.weatherCard && <WeatherCard card={msg.weatherCard} />}
                         {msg.content &&
                           (a2uiLike ? (
                             <A2UISurface
@@ -811,7 +883,9 @@ export default function App() {
               ? '出行助手模式：AI 工具调用高德服务'
               : mode === 'food'
                 ? '外卖点餐模式：AI 工具调用美团开放平台'
-                : '文本对话模式'} · 当前模型：{model}
+                : mode === 'weather'
+                  ? '天气查询模式：AI 工具调用 Open-Meteo'
+                  : '文本对话模式'} · 当前模型：{model}
         </p>
       </footer>
     </div>

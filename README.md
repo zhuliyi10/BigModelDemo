@@ -8,6 +8,7 @@
 - ⚡ **A2UI 场景**：AI 按 A2UI 协议实时生成可交互界面（表单、点单、预订），填写后一键提交
 - 🗺 **出行助手**：AI 以工具调用方式查询高德地图（地理编码 / POI / 路线规划），附交互式路线卡片
 - 🍜 **外卖点餐**：AI 调用美团外卖开放平台（搜索门店 → 展示菜单 → A2UI 点餐界面 → 跳转美团下单）；未配置美团凭据时自动降级为**本地演示数据**，全流程照常可演示
+- 🌤 **天气查询**：AI 工具调用 Open-Meteo（免凭据），当前实况 + 7 天逐日预报，附天气卡片与穿衣出行建议
 - 🧠 回复内容支持 **Markdown** 渲染（代码块、表格、列表、引用等）
 - 🌓 **深色 / 浅色主题**一键切换，跟随系统偏好并本地记忆，无闪烁
 - 🤖 模型下拉框**动态加载**网关支持的模型列表（默认 `claude-4.6-sonnet`）
@@ -33,6 +34,7 @@ BigModelDemo/
 │   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/food/chat、/api/models
 │   ├── amap.py             # 高德 Web 服务封装（出行助手工具执行器）
 │   ├── meituan.py          # 美团外卖开放平台封装（外卖点餐工具执行器 + 签名）
+│   ├── weather.py          # Open-Meteo 天气封装（天气查询工具执行器，免凭据）
 │   ├── requirements.txt    # Python 依赖清单
 │   ├── .venv/              # Python 虚拟环境（不入库）
 │   ├── .env                # 真实密钥（不入库，需自行创建）
@@ -106,6 +108,7 @@ npm run dev:client   # 前端 http://localhost:5173
 | POST | `/api/a2ui/chat` | A2UI 场景问答（注入 A2UI 系统提示词） |
 | POST | `/api/agent/chat` | 出行助手（高德工具调用循环），SSE 流式返回 |
 | POST | `/api/food/chat` | 外卖点餐（美团工具调用 + A2UI 点餐界面），SSE 流式返回 |
+| POST | `/api/weather/chat` | 天气查询（Open-Meteo 工具调用，免凭据），SSE 流式返回 |
 
 `POST /api/chat` 请求体：
 
