@@ -33,7 +33,12 @@
 BigModelDemo/
 ├── package.json            # 根配置，统一启动脚本（前端 npm workspace + 后端 uvicorn）
 ├── docs/
-│   └── recharge.md         # 充话费场景实现文档
+│   ├── recharge.md         # 充话费场景实现文档
+│   ├── paotui.md           # 美团跑腿场景实现文档
+│   ├── travel.md           # 美团酒旅场景实现文档
+│   ├── amap.md             # 出行助手场景实现文档（高德）
+│   ├── weather.md          # 天气查询场景实现文档（Open-Meteo）
+│   └── a2ui.md             # A2UI 可交互界面场景实现文档
 ├── server/                 # 后端代理服务（FastAPI，默认端口 3001）
 │   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/travel/chat、/api/paotui/chat、/api/weather/chat、/api/recharge/chat、/api/models
 │   ├── amap.py             # 高德 Web 服务封装（出行助手工具执行器）
