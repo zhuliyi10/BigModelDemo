@@ -146,6 +146,9 @@ const A2UI_EVENT_LABELS = {
   submit_recharge: '提交充值表单',
   confirm_recharge: '确认充值',
   cancel_recharge: '取消充值',
+  submit_paotui_order: '提交跑腿订单表单',
+  confirm_order: '确认下单',
+  cancel_order: '取消下单',
 };
 
 /** [A2UI_EVENT] 消息转为用户侧可读文本：表单提交附「标签 值」摘要，按钮确认仅显示动作 */
@@ -515,7 +518,7 @@ export default function App() {
   // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询；recharge = 话费充值
   const [mode, setMode] = useState('chat');
   const agentLike = mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather' || mode === 'recharge';
-  const a2uiLike = mode === 'a2ui' || mode === 'recharge';
+  const a2uiLike = mode === 'a2ui' || mode === 'recharge' || mode === 'paotui';
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);

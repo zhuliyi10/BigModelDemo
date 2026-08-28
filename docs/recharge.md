@@ -120,15 +120,15 @@ async def recharge_chat(request: Request):
 
 ```jsx
 const agentLike = mode === 'agent' || ... || mode === 'recharge';
-const a2uiLike  = mode === 'a2ui' || mode === 'recharge';
+const a2uiLike  = mode === 'a2ui' || mode === 'recharge' || mode === 'paotui';
 ```
 
-`recharge` 是项目中**唯一同时属于两个集合**的模式：
+`recharge` 与 `paotui` 同时属于两个集合（agent 场景 + A2UI 表单交互）：
 
 - `agentLike`：显示工具调用 chip（调用中/完成+摘要）与结构化卡片
 - `a2uiLike`：回复正文用 `A2UISurface` 渲染（A2UI 表单可点击交互），而非普通 Markdown
 
-> 注意：美团跑腿模式虽也注入 A2UI 提示词，但未加入 `a2uiLike`，其表单以代码块形式展示、不可交互——新增交互场景应参照 recharge 的双标记做法。
+> 美团跑腿（`paotui`）采用同样的双标记做法：订单表单（`submit_paotui_order`）与费用确认表单（`confirm_order` / `cancel_order`）均可交互，事件文本化映射统一收敛在 `A2UI_EVENT_LABELS`。
 
 ### 5.2 卡片渲染（RechargeCard）
 

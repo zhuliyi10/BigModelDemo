@@ -10,7 +10,7 @@
   paotui_login 在 paotui.js login 返回 AUTH_FAILED 时回退
   `pt-passport auth get-code` 拿 AUTH_LINK；用户扫码后 paotui_confirm_auth
   执行 `pt-passport auth poll-token`；Token 缓存于
-  ~/.xiaomei-workspace/pt_passport_auth.json，执行 CLI 前经
+  ~/.xiaomei-workspace/mt_passport_auth.json，执行 CLI 前经
   `pt-passport get-token` 取出注入 MCP_ACCESS_TOKEN。
 
 与 AmapService / TravelService 同款三层结构：
