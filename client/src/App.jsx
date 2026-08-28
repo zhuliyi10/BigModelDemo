@@ -59,6 +59,13 @@ const PAOTUI_SUGGESTIONS = [
   '查一下我上一个跑腿订单的状态',
 ];
 
+// 话费充值推荐问题：触发余额查询与 A2UI 充值表单（演示模拟数据）
+const RECHARGE_SUGGESTIONS = [
+  '帮我给 13800138000 充 100 元话费',
+  '查一下 15912345678 的话费余额',
+  '给我的手机号充 50 元话费',
+];
+
 /** 解析 SSE 缓冲区，返回 [完整事件数组, 剩余缓冲] */
 function parseSSE(buffer) {
   const events = [];
@@ -132,6 +139,21 @@ function buildEventSummary(event) {
     label: labelOf[key] || key,
     value: format(value),
   }));
+}
+
+// A2UI 事件名 → 用户侧文本：提交表单与按钮确认均以普通文本展示
+const A2UI_EVENT_LABELS = {
+  submit_recharge: '提交充值表单',
+  confirm_recharge: '确认充值',
+  cancel_recharge: '取消充值',
+};
+
+/** [A2UI_EVENT] 消息转为用户侧可读文本：表单提交附「标签 值」摘要，按钮确认仅显示动作 */
+function buildA2uiEventText(msg) {
+  const label = A2UI_EVENT_LABELS[msg.a2uiEventName] || '界面操作';
+  const rows = Array.isArray(msg.a2uiSummary) ? msg.a2uiSummary : [];
+  if (rows.length === 0) return label;
+  return `${label}：${rows.map((row) => `${row.label} ${row.value}`).join('，')}`;
 }
 
 const SunIcon = () => (
@@ -383,6 +405,48 @@ function WeatherCard({ card }) {
   );
 }
 
+/** 话费充值卡片：余额查询（kind=balance）/ 充值订单（kind=result），数据为演示模拟 */
+function RechargeCard({ card }) {
+  return (
+    <div className="amap-card">
+      <div className="amap-route">
+        <div className="amap-route-title">📱 {card.title || '话费充值'}</div>
+        {card.kind === 'balance' ? (
+          <>
+            <div className="rc-hero">
+              <span className="rc-hero-label">当前余额</span>
+              <span className="rc-hero-value">
+                {card.balance}
+                <em> 元</em>
+              </span>
+              <span className={`rc-status${card.status === '余额偏低' ? ' warn' : ''}`}>{card.status}</span>
+            </div>
+            <div className="rc-meta">
+              <span>{card.phone}</span>
+              <span>{card.carrier} · {card.city}</span>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="rc-rows">
+              <div className="rc-row"><span>充值号码</span><b>{card.phone}</b></div>
+              <div className="rc-row"><span>充值面值</span><b>{card.face_value} 元</b></div>
+              <div className="rc-row"><span>应付金额</span><b>¥{card.payable}</b></div>
+              <div className="rc-row"><span>订单号</span><b>{card.order_no}</b></div>
+              <div className="rc-row">
+                <span>状态</span>
+                <b className={card.status === '充值成功' ? 'ok' : 'pending'}>{card.status}</b>
+              </div>
+            </div>
+            {card.eta && <div className="rc-eta">⏱ {card.eta}</div>}
+          </>
+        )}
+        <div className="rc-demo">演示数据 · 模拟运营商话费服务，无真实扣费</div>
+      </div>
+    </div>
+  );
+}
+
 /** 高德路线卡片：交互/静态底图 + 分段行程；静态图可点击跳转高德官方路线页 */
 function AmapCard({ card }) {
   const [cfg, setCfg] = useState(null);
@@ -448,10 +512,10 @@ export default function App() {
   const [models, setModels] = useState(FALLBACK_MODELS);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [loading, setLoading] = useState(false);
-  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询
+  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询；recharge = 话费充值
   const [mode, setMode] = useState('chat');
-  const agentLike = mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather';
-  const a2uiLike = mode === 'a2ui';
+  const agentLike = mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather' || mode === 'recharge';
+  const a2uiLike = mode === 'a2ui' || mode === 'recharge';
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -510,7 +574,7 @@ export default function App() {
   const handleA2UIEvent = (event) => {
     if (loading) return;
     const payload = `[A2UI_EVENT] ${event.surfaceId}.${event.name} ${JSON.stringify(event.dataModel ?? {})}`;
-    send(payload, { a2uiSummary: buildEventSummary(event) });
+    send(payload, { a2uiSummary: buildEventSummary(event), a2uiEventName: event.name });
   };
 
   const send = async (preset, extra) => {
@@ -537,7 +601,9 @@ export default function App() {
                 ? '/api/paotui/chat'
                 : mode === 'weather'
                   ? '/api/weather/chat'
-                  : '/api/chat';
+                  : mode === 'recharge'
+                    ? '/api/recharge/chat'
+                    : '/api/chat';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -609,6 +675,10 @@ export default function App() {
             // 天气查询：天气卡片（当前实况 + 7 天逐日预报）
             const card = event.card;
             setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, weatherCard: card } : m)));
+          } else if (event.type === 'recharge_card') {
+            // 话费充值：余额/充值订单卡片（演示模拟数据）
+            const card = event.card;
+            setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, rechargeCard: card } : m)));
           } else if (event.type === 'error') {
             throw new Error(extractError(event));
           }
@@ -674,6 +744,9 @@ export default function App() {
           <button className={`mode-tab${mode === 'weather' ? ' active' : ''}`} onClick={() => switchMode('weather')} disabled={loading}>
             🌤 天气查询
           </button>
+          <button className={`mode-tab${mode === 'recharge' ? ' active' : ''}`} onClick={() => switchMode('recharge')} disabled={loading}>
+            📱 充话费
+          </button>
         </div>
         <div className="header-actions">
           <button className="btn-theme" onClick={toggleTheme} title={theme === 'dark' ? '切换明亮模式' : '切换深色模式'}>
@@ -707,6 +780,8 @@ export default function App() {
                       ? '同城急事？AI 帮你叫骑手'
                       : mode === 'weather'
                       ? '问一句，AI 查实时天气'
+                      : mode === 'recharge'
+                      ? '话费不足？AI 帮你一键充值'
                       : '有什么可以帮你的？'}
             </h2>
             <p>
@@ -720,6 +795,8 @@ export default function App() {
                       ? 'AI 调用官方美团跑腿 Skill（帮取送/帮买/帮忙），费用预览 + 两步确认，真实下单'
                       : mode === 'weather'
                       ? 'AI 通过工具调用实时查询 Open-Meteo（当前实况 + 7 天预报），并附天气卡片'
+                      : mode === 'recharge'
+                      ? 'AI 查询话费余额（演示模拟数据），生成充值表单，两步确认完成充值'
                       : '选择一个话题开始，或直接输入你的问题'}
             </p>
             <div className="suggestions">
@@ -733,7 +810,9 @@ export default function App() {
                       ? PAOTUI_SUGGESTIONS
                       : mode === 'weather'
                         ? WEATHER_SUGGESTIONS
-                        : SUGGESTIONS
+                        : mode === 'recharge'
+                          ? RECHARGE_SUGGESTIONS
+                          : SUGGESTIONS
               ).map((s) => (
                 <button key={s} className="chip" onClick={() => send(s)} disabled={loading}>
                   {s}
@@ -757,7 +836,7 @@ export default function App() {
                   {msg.role === 'assistant' ? (
                     msg.content ||
                     (agentLike &&
-                      ((msg.tools || []).length > 0 || msg.amapCard || msg.travelCard || msg.paotuiCard || msg.weatherCard)) ? (
+                      ((msg.tools || []).length > 0 || msg.amapCard || msg.travelCard || msg.paotuiCard || msg.weatherCard || msg.rechargeCard)) ? (
                       <>
                         {agentLike && (msg.tools || []).length > 0 && (
                           <div className="tool-chips">
@@ -778,6 +857,7 @@ export default function App() {
                         {agentLike && msg.travelCard && <MeituanTravelCard card={msg.travelCard} />}
                         {agentLike && msg.paotuiCard && <PaotuiAuthCard card={msg.paotuiCard} />}
                         {agentLike && msg.weatherCard && <WeatherCard card={msg.weatherCard} />}
+                        {agentLike && msg.rechargeCard && <RechargeCard card={msg.rechargeCard} />}
                         {msg.content &&
                           (a2uiLike ? (
                             <A2UISurface
@@ -799,21 +879,7 @@ export default function App() {
                       </div>
                     )
                   ) : msg.content.startsWith('[A2UI_EVENT]') ? (
-                    <div className="a2ui-event-msg">
-                      <div className="a2ui-event-tag">⚡ 界面提交</div>
-                      {Array.isArray(msg.a2uiSummary) && msg.a2uiSummary.length > 0 ? (
-                        <ul className="a2ui-event-summary">
-                          {msg.a2uiSummary.map((row, idx) => (
-                            <li key={idx}>
-                              <span className="a2ui-event-label">{row.label}</span>
-                              <span className="a2ui-event-value">{row.value}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <pre>{msg.content.slice(msg.content.indexOf('{'))}</pre>
-                      )}
-                    </div>
+                    buildA2uiEventText(msg)
                   ) : (
                     msg.content
                   )}
@@ -857,6 +923,8 @@ export default function App() {
                   ? '美团跑腿模式：AI 工具调用官方 meituan-paotui Skill'
                   : mode === 'weather'
                   ? '天气查询模式：AI 工具调用 Open-Meteo'
+                  : mode === 'recharge'
+                  ? '话费充值模式：AI 表单交互（演示模拟数据）'
                   : '文本对话模式'} · 当前模型：{model}
         </p>
       </footer>

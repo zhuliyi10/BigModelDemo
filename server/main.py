@@ -9,6 +9,7 @@
 - POST /api/travel/chat 美团酒旅问答（meituan-travel Skill CLI 工具调用）
 - POST /api/paotui/chat 美团跑腿问答（meituan-paotui Skill CLI 工具调用，两步确认下单）
 - POST /api/weather/chat 天气查询问答（Open-Meteo 工具调用，免凭据）
+- POST /api/recharge/chat 话费充值问答（演示模拟数据，A2UI 表单 + 两步确认充值）
 """
 
 import asyncio
@@ -26,6 +27,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from amap import AmapService
 from mttravel import TravelService
 from paotui import PaotuiService
+from recharge import RechargeService
 from weather import WeatherService
 
 # 从 server/.env 加载环境变量（.env 不入库，见 .gitignore）
@@ -175,15 +177,16 @@ updateComponents 完整示例（注意：components 必须包含一个根容器 
 当用户消息以 "[A2UI_EVENT]" 开头时，表示用户刚在界面上完成操作，消息中包含界面提交的 JSON 数据：请基于数据直接给出简短的中文确认或处理结果，用普通文本（可用 Markdown）回复，不要再生成界面。"""
 
 
-# ---------- 出行助手 / 美团酒旅 / 美团跑腿 / 天气查询模式 ----------
+# ---------- 出行助手 / 美团酒旅 / 美团跑腿 / 天气查询 / 话费充值模式 ----------
 # 服务封装分别在 amap.py（AmapService）、mttravel.py（TravelService）、
-# paotui.py（PaotuiService）、weather.py（WeatherService）。
+# paotui.py（PaotuiService）、weather.py（WeatherService）、recharge.py（RechargeService）。
 # 模型只决定"何时调用、传什么参数"；服务端真正请求第三方 API 并回写 tool_result；
-# 前端根据服务端下发的结构化数据渲染路线/POI/酒旅/天气卡片。
+# 前端根据服务端下发的结构化数据渲染路线/POI/酒旅/天气/充值卡片。
 amap = AmapService()
 travel = TravelService()
 paotui = PaotuiService()
 weather = WeatherService()
+recharge = RechargeService()
 
 
 def sse_event(obj) -> str:
@@ -487,6 +490,22 @@ async def weather_chat(request: Request):
     if err:
         return err
     return agent_stream(body, weather, weather.system_prompt())
+
+
+@app.post('/api/recharge/chat')
+async def recharge_chat(request: Request):
+    """话费充值接口（演示场景）：余额查询/档位/下单工具，数据为模拟数据免凭据；
+    叠加 A2UI 协议提示词用表单收集充值信息，系统提示词强制两步确认充值"""
+    body = await request.json()
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
+    err = missing_llm_config()
+    if err:
+        return err
+    # 叠加 A2UI 协议提示词：充值场景用表单收集手机号/面值、费用确认
+    system = build_a2ui_system_prompt() + '\n\n' + recharge.system_prompt()
+    return agent_stream(body, recharge, system)
 
 
 if __name__ == '__main__':

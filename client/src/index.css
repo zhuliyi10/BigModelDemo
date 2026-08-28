@@ -904,55 +904,6 @@ body {
   margin: 2px 0;
 }
 
-/* 界面提交事件在用户侧的展示 */
-.a2ui-event-msg {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
-}
-.a2ui-event-tag {
-  font-weight: 600;
-  color: var(--accent);
-}
-.a2ui-event-msg pre {
-  margin: 0;
-  font-size: 12px;
-  white-space: pre-wrap;
-  word-break: break-all;
-  background: var(--pre-bg);
-  color: var(--pre-color);
-  padding: 8px 10px;
-  border-radius: 8px;
-}
-/* 提交信息的「标签: 值」可读摘要 */
-.a2ui-event-summary {
-  list-style: none;
-  margin: 0;
-  padding: 8px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: var(--pre-bg);
-  border-radius: 8px;
-}
-.a2ui-event-summary li {
-  display: flex;
-  gap: 10px;
-  align-items: baseline;
-  font-size: 12.5px;
-  line-height: 1.5;
-}
-.a2ui-event-label {
-  flex: 0 0 auto;
-  min-width: 6em;
-  color: var(--text-dim);
-}
-.a2ui-event-value {
-  color: var(--pre-color);
-  word-break: break-all;
-}
-
 /* ========== 移动端 ========== */
 @media (max-width: 640px) {
   /* iOS Safari 对 fixed 背景支持差（滚动跳动/不跟随），降级为 scroll */
@@ -1525,6 +1476,98 @@ body {
 
 .wx-source {
   margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+
+/* ---------- 话费充值卡片 ---------- */
+
+.rc-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-strong);
+}
+
+.rc-hero-label {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.rc-hero-value {
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.rc-hero-value em {
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.rc-status {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.rc-status.warn {
+  color: #e8a33d;
+}
+
+.rc-meta {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.rc-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.rc-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+}
+
+.rc-row span {
+  color: var(--text-dim);
+}
+
+.rc-row b {
+  font-weight: 600;
+}
+
+.rc-row b.ok {
+  color: #34b37f;
+}
+
+.rc-row b.pending {
+  color: #e8a33d;
+}
+
+.rc-eta {
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.rc-demo {
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
   font-size: 11px;
   color: var(--text-dim);
   opacity: 0.75;
