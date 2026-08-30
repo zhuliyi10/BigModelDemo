@@ -66,6 +66,13 @@ const RECHARGE_SUGGESTIONS = [
   '给我的手机号充 50 元话费',
 ];
 
+// 外卖点餐推荐问题：触发商家搜索、菜单查询与 A2UI 点餐表单（演示模拟数据）
+const WAIMAI_SUGGESTIONS = [
+  '帮我点一份黄焖鸡米饭',
+  '我想喝奶茶，有哪些店推荐',
+  '来一份红烧牛肉面，加一个卤蛋',
+];
+
 /** 解析 SSE 缓冲区，返回 [完整事件数组, 剩余缓冲] */
 function parseSSE(buffer) {
   const events = [];
@@ -149,6 +156,9 @@ const A2UI_EVENT_LABELS = {
   submit_paotui_order: '提交跑腿订单表单',
   confirm_order: '确认下单',
   cancel_order: '取消下单',
+  submit_waimai_order: '提交点餐表单',
+  confirm_waimai: '确认下单',
+  cancel_waimai: '取消下单',
 };
 
 /** [A2UI_EVENT] 消息转为用户侧可读文本：表单提交附「标签 值」摘要，按钮确认仅显示动作 */
@@ -450,6 +460,203 @@ function RechargeCard({ card }) {
   );
 }
 
+/** 外卖点餐卡片（参考千问 App）。
+ * 商品列表卡（kind=shops）上点「选这个」弹出规格弹窗（对齐千问底部弹层：选项块单选/加价/数量，预估价随规格联动），
+ * 点「选好了」把商品+规格+数量组装为用户消息发送大模型处理（地址/电话收集、费用预览与两步确认走 A2UI 对话流程）；
+ * 「进店选购」直接发送消息；菜单卡（kind=menu）与订单卡（kind=result）为 LLM 流程产物。演示模拟数据 */
+function WaimaiCard({ card, onBrowse }) {
+  const shops = card.kind === 'shops' ? card.shops || [] : [];
+  const [sheet, setSheet] = useState(null); // 规格弹窗：选中的商家（含招牌菜与规格组）
+  const [specs, setSpecs] = useState({});   // 已选规格：{ 规格组: 选项原文 }
+  const [qty, setQty] = useState(1);
+
+  // 打开弹窗：每组默认选第一项（对齐千问默认选中态）
+  const openSheet = (s) => {
+    const init = {};
+    (s.signature_specs || []).forEach((g) => { init[g.group] = g.options[0]?.label; });
+    setSheet(s);
+    setSpecs(init);
+    setQty(1);
+  };
+
+  // 预估价随规格联动：基础价 + 各组选项加价（与后端计价规则一致）
+  const specPrice = sheet
+    ? sheet.signature_price + (sheet.signature_specs || []).reduce((sum, g) => {
+        const opt = (g.options || []).find((o) => o.label === specs[g.group]);
+        return sum + (opt?.extra || 0);
+      }, 0)
+    : 0;
+  // 已选摘要：「不需要」的饮料不入摘要
+  const specText = sheet
+    ? (sheet.signature_specs || [])
+        .map((g) => specs[g.group])
+        .filter((v) => v && v !== '不需要')
+        .join(' / ')
+    : '';
+
+  // 「选好了」：组装参数消息发送大模型处理（后续地址/电话、预览与确认由对话流程完成）
+  const confirmSheet = () => {
+    const parts = (sheet.signature_specs || [])
+      .map((g) => specs[g.group])
+      .filter((v) => v && v !== '不需要');
+    let text = `我要点「${sheet.name}」的${sheet.signature_name}`;
+    if (parts.length) text += `（${parts.join('/')}）`;
+    if (qty > 1) text += ` ×${qty}`;
+    setSheet(null);
+    onBrowse?.(text);
+  };
+
+  return (
+    <div className="amap-card">
+      <div className="amap-route">
+        <div className="amap-route-title">🍔 {card.title || '外卖点餐'}</div>
+
+        {card.kind === 'shops' && (
+          <div className="wm-scroll">
+            {shops.map((s) => (
+              <div key={s.id} className="wm-shop-card">
+                <button
+                  className="wm-shop-head"
+                  onClick={() => onBrowse?.(`看看「${s.name}」的菜单`)}
+                  title="进店查看菜单"
+                >
+                  <span className="wm-shop-name">{s.icon} {s.name}</span>
+                  <span className="wm-arrow">›</span>
+                </button>
+                <div className="wm-shop-meta">
+                  <span className="wm-tag">堂食店</span>
+                  <span>起送 ¥{s.min_order} · {s.delivery_time}分钟</span>
+                  <span className="wm-rating">
+                    {s.rating}
+                    <em>{s.rating_word}</em>
+                  </span>
+                </div>
+                <div className="wm-media">{s.icon}</div>
+                <div className="wm-sig-name">{s.signature_name}</div>
+                <div className="wm-sig-desc">{s.signature_desc}</div>
+                <div className="wm-sig-foot">
+                  <span className="wm-sig-price">
+                    ¥{s.signature_price}
+                    <em> 预估价</em>
+                  </span>
+                  <button className="wm-link" onClick={() => onBrowse?.(`看看「${s.name}」的菜单`)}>
+                    进店选购 ›
+                  </button>
+                </div>
+                <button className="wm-pick" onClick={() => openSheet(s)}>选这个</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {card.kind === 'menu' && (
+          <>
+            <div className="wm-shop-meta">
+              <span>{card.icon} {card.shop_name}</span>
+              {card.category && <span>· {card.category}</span>}
+              {card.rating != null && <span>· 评分 {card.rating}</span>}
+              {card.deal && <span className="wm-deal">{card.deal}</span>}
+            </div>
+            <div className="wm-dishes">
+              {(card.dishes || []).map((d) => (
+                <div key={d.name} className="wm-dish">
+                  <span className="wm-dish-icon">{d.icon || '🍽'}</span>
+                  <div className="wm-dish-main">
+                    <div className="wm-dish-name">{d.name}</div>
+                    {(d.specs || []).length > 0 && (
+                      <div className="wm-dish-specs">
+                        可选规格：{d.specs.map((g) => g.group).join(' / ')}
+                      </div>
+                    )}
+                  </div>
+                  <span className="wm-dish-sales">月售 {d.monthly_sales}</span>
+                  <b className="wm-dish-price">¥{d.price}</b>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {card.kind === 'result' && (
+          <>
+            <div className="wm-order-shop">{card.shop_name}</div>
+            <div className="wm-order-item">
+              <span className="wm-dish-icon">{card.icon || '🍽'}</span>
+              <div className="wm-order-name">{card.items_summary}</div>
+            </div>
+            <div className="rc-rows">
+              <div className="rc-row"><span>送达时间</span><b>{card.arrival || '预计 30 分钟送达'}</b></div>
+              <div className="rc-row"><span>配送至</span><b>{card.address}</b></div>
+              <div className="rc-row"><span>联系电话</span><b>{card.phone}</b></div>
+              {card.remark && <div className="rc-row"><span>备注</span><b>{card.remark}</b></div>}
+              <div className="rc-row">
+                <span>其他费用</span>
+                <b>打包费 ¥{card.packing_fee} · 配送费 ¥{card.delivery_fee}</b>
+              </div>
+              {card.discount > 0 && (
+                <div className="rc-row"><span>满减优惠</span><b className="ok">-¥{card.discount}</b></div>
+              )}
+              <div className="rc-row"><span>总计</span><b className="wm-total">¥{card.total}</b></div>
+              <div className="rc-row">
+                <span>状态</span>
+                <b className={card.status === '已送达' ? 'ok' : 'pending'}>{card.status}</b>
+              </div>
+              <div className="rc-row"><span>订单号</span><b>{card.order_no}</b></div>
+            </div>
+            {card.eta && <div className="rc-eta">⏱ {card.eta}</div>}
+          </>
+        )}
+        {/* 规格弹窗（对齐千问底部弹层）：选项块单选 + 数量，预估价随规格联动；
+            「选好了」组装商品+规格+数量消息发送大模型处理 */}
+        {sheet && (
+          <div className="wm-modal" onClick={() => setSheet(null)}>
+            <div className="wm-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="wm-spec-head">
+                <div className="wm-spec-media">{sheet.icon}</div>
+                <div className="wm-spec-main">
+                  <div className="wm-spec-title">{sheet.signature_name}</div>
+                  <div className="wm-spec-sub">{sheet.name} · 已选：{specText || '默认规格'}</div>
+                  <div className="wm-spec-price">
+                    <b>¥{specPrice}</b>
+                    {specPrice !== sheet.signature_price && <del>¥{sheet.signature_price}</del>}
+                    <em>预估到手价</em>
+                  </div>
+                </div>
+                <button className="wm-close" onClick={() => setSheet(null)} title="关闭">✕</button>
+              </div>
+              {(sheet.signature_specs || []).map((g) => (
+                <div key={g.group} className="wm-spec-group">
+                  <div className="wm-spec-label">{g.group}</div>
+                  <div className="wm-spec-opts">
+                    {g.options.map((o) => (
+                      <button
+                        key={o.label}
+                        className={`wm-opt${specs[g.group] === o.label ? ' active' : ''}`}
+                        onClick={() => setSpecs({ ...specs, [g.group]: o.label })}
+                      >
+                        {o.label}{o.extra ? `（+${o.extra}元）` : ''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="wm-spec-group">
+                <div className="wm-spec-label">数量</div>
+                <div className="wm-qty">
+                  <button onClick={() => setQty(Math.max(1, qty - 1))} disabled={qty <= 1}>−</button>
+                  <b>x{qty}</b>
+                  <button onClick={() => setQty(Math.min(9, qty + 1))}>+</button>
+                </div>
+              </div>
+              <button className="wm-pick" onClick={confirmSheet}>选好了</button>
+            </div>
+          </div>
+        )}
+        <div className="rc-demo">演示数据 · 模拟外卖点餐服务，无真实交易</div>
+      </div>
+    </div>
+  );
+}
+
 /** 高德路线卡片：交互/静态底图 + 分段行程；静态图可点击跳转高德官方路线页 */
 function AmapCard({ card }) {
   const [cfg, setCfg] = useState(null);
@@ -515,10 +722,10 @@ export default function App() {
   const [models, setModels] = useState(FALLBACK_MODELS);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [loading, setLoading] = useState(false);
-  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询；recharge = 话费充值
+  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询；recharge = 话费充值；waimai = 外卖点餐
   const [mode, setMode] = useState('chat');
-  const agentLike = mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather' || mode === 'recharge';
-  const a2uiLike = mode === 'a2ui' || mode === 'recharge' || mode === 'paotui';
+  const agentLike = mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather' || mode === 'recharge' || mode === 'waimai';
+  const a2uiLike = mode === 'a2ui' || mode === 'recharge' || mode === 'paotui' || mode === 'waimai';
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -606,7 +813,9 @@ export default function App() {
                   ? '/api/weather/chat'
                   : mode === 'recharge'
                     ? '/api/recharge/chat'
-                    : '/api/chat';
+                    : mode === 'waimai'
+                      ? '/api/waimai/chat'
+                      : '/api/chat';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -682,6 +891,10 @@ export default function App() {
             // 话费充值：余额/充值订单卡片（演示模拟数据）
             const card = event.card;
             setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, rechargeCard: card } : m)));
+          } else if (event.type === 'waimai_card') {
+            // 外卖点餐：商家列表/菜单/订单卡片（演示模拟数据）
+            const card = event.card;
+            setMessages((prev) => prev.map((m, i) => (i === prev.length - 1 ? { ...m, waimaiCard: card } : m)));
           } else if (event.type === 'error') {
             throw new Error(extractError(event));
           }
@@ -750,6 +963,9 @@ export default function App() {
           <button className={`mode-tab${mode === 'recharge' ? ' active' : ''}`} onClick={() => switchMode('recharge')} disabled={loading}>
             📱 充话费
           </button>
+          <button className={`mode-tab${mode === 'waimai' ? ' active' : ''}`} onClick={() => switchMode('waimai')} disabled={loading}>
+            🍔 外卖点餐
+          </button>
         </div>
         <div className="header-actions">
           <button className="btn-theme" onClick={toggleTheme} title={theme === 'dark' ? '切换明亮模式' : '切换深色模式'}>
@@ -785,6 +1001,8 @@ export default function App() {
                       ? '问一句，AI 查实时天气'
                       : mode === 'recharge'
                       ? '话费不足？AI 帮你一键充值'
+                      : mode === 'waimai'
+                      ? '想吃点什么？AI 帮你点外卖'
                       : '有什么可以帮你的？'}
             </h2>
             <p>
@@ -800,6 +1018,8 @@ export default function App() {
                       ? 'AI 通过工具调用实时查询 Open-Meteo（当前实况 + 7 天预报），并附天气卡片'
                       : mode === 'recharge'
                       ? 'AI 查询话费余额（演示模拟数据），生成充值表单，两步确认完成充值'
+                      : mode === 'waimai'
+                      ? 'AI 搜索附近商家与菜单（演示模拟数据），生成点餐表单，两步确认完成下单'
                       : '选择一个话题开始，或直接输入你的问题'}
             </p>
             <div className="suggestions">
@@ -815,7 +1035,9 @@ export default function App() {
                         ? WEATHER_SUGGESTIONS
                         : mode === 'recharge'
                           ? RECHARGE_SUGGESTIONS
-                          : SUGGESTIONS
+                          : mode === 'waimai'
+                            ? WAIMAI_SUGGESTIONS
+                            : SUGGESTIONS
               ).map((s) => (
                 <button key={s} className="chip" onClick={() => send(s)} disabled={loading}>
                   {s}
@@ -839,7 +1061,7 @@ export default function App() {
                   {msg.role === 'assistant' ? (
                     msg.content ||
                     (agentLike &&
-                      ((msg.tools || []).length > 0 || msg.amapCard || msg.travelCard || msg.paotuiCard || msg.weatherCard || msg.rechargeCard)) ? (
+                      (msg.tools || []).length > 0 || msg.amapCard || msg.travelCard || msg.paotuiCard || msg.weatherCard || msg.rechargeCard || msg.waimaiCard) ? (
                       <>
                         {agentLike && (msg.tools || []).length > 0 && (
                           <div className="tool-chips">
@@ -861,6 +1083,12 @@ export default function App() {
                         {agentLike && msg.paotuiCard && <PaotuiAuthCard card={msg.paotuiCard} />}
                         {agentLike && msg.weatherCard && <WeatherCard card={msg.weatherCard} />}
                         {agentLike && msg.rechargeCard && <RechargeCard card={msg.rechargeCard} />}
+                        {agentLike && msg.waimaiCard &&
+                          // 下单流程消息（含 waimai_order 调用）不再回显商家/菜品卡片，避免模型重复搜索时卡片闪现
+                          !((msg.waimaiCard.kind === 'shops' || msg.waimaiCard.kind === 'menu') &&
+                            (msg.tools || []).some((t) => t.name === 'waimai_order')) && (
+                          <WaimaiCard card={msg.waimaiCard} onBrowse={(q) => send(q)} />
+                        )}
                         {msg.content &&
                           (a2uiLike ? (
                             <A2UISurface
@@ -928,6 +1156,8 @@ export default function App() {
                   ? '天气查询模式：AI 工具调用 Open-Meteo'
                   : mode === 'recharge'
                   ? '话费充值模式：AI 表单交互（演示模拟数据）'
+                  : mode === 'waimai'
+                  ? '外卖点餐模式：AI 表单交互（演示模拟数据）'
                   : '文本对话模式'} · 当前模型：{model}
         </p>
       </footer>

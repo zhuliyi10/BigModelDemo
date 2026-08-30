@@ -11,6 +11,7 @@
 - 🛵 **美团跑腿**：AI 调用官方美团跑腿 Skill（`meituan-paotui`，帮取送/帮买/帮忙），地址簿匹配 + POI 搜索 + 费用预览，**两步确认真实下单**
 - 🌤 **天气查询**：AI 工具调用 Open-Meteo（免凭据），当前实况 + 7 天逐日预报，附天气卡片与穿衣出行建议
 - 📱 **充话费**：AI 查询话费余额（演示模拟数据，免凭据），A2UI 充值表单 + 费用确认两步门控，附余额/订单卡片
+- 🍔 **外卖点餐**：AI 搜索附近商家与菜单（演示模拟数据，免凭据），参考千问交互——商品卡「选这个」弹窗改规格，选好后发大模型预览确认下单，附商家/菜单/订单卡片
 - 🧠 回复内容支持 **Markdown** 渲染（代码块、表格、列表、引用等）
 - 🌓 **深色 / 浅色主题**一键切换，跟随系统偏好并本地记忆，无闪烁
 - 🤖 模型下拉框**动态加载**网关支持的模型列表（默认 `claude-4.6-sonnet`）
@@ -34,18 +35,20 @@ BigModelDemo/
 ├── package.json            # 根配置，统一启动脚本（前端 npm workspace + 后端 uvicorn）
 ├── docs/
 │   ├── recharge.md         # 充话费场景实现文档
+│   ├── waimai.md           # 外卖点餐场景实现文档
 │   ├── paotui.md           # 美团跑腿场景实现文档
 │   ├── travel.md           # 美团酒旅场景实现文档
 │   ├── amap.md             # 出行助手场景实现文档（高德）
 │   ├── weather.md          # 天气查询场景实现文档（Open-Meteo）
 │   └── a2ui.md             # A2UI 可交互界面场景实现文档
 ├── server/                 # 后端代理服务（FastAPI，默认端口 3001）
-│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/travel/chat、/api/paotui/chat、/api/weather/chat、/api/recharge/chat、/api/models
+│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/travel/chat、/api/paotui/chat、/api/weather/chat、/api/recharge/chat、/api/waimai/chat、/api/models
 │   ├── amap.py             # 高德 Web 服务封装（出行助手工具执行器）
 │   ├── mttravel.py         # 美团酒旅 Skill 封装（mttravel CLI 工具执行器）
 │   ├── paotui.py           # 美团跑腿 Skill 封装（paotui.js CLI 执行器，两步确认下单）
 │   ├── weather.py          # Open-Meteo 天气封装（天气查询工具执行器，免凭据）
 │   ├── recharge.py         # 话费充值演示服务（模拟运营商数据 + 充值工具执行器，两步确认充值）
+│   ├── waimai.py           # 外卖点餐演示服务（模拟商家/菜单数据 + 点餐工具执行器，两步确认下单；快捷通道复用同一执行器）
 │   ├── requirements.txt    # Python 依赖清单
 │   ├── .venv/              # Python 虚拟环境（不入库）
 │   ├── .env                # 真实密钥（不入库，需自行创建）
@@ -137,6 +140,7 @@ npm run dev:client   # 前端 http://localhost:5173
 | POST | `/api/paotui/chat` | 美团跑腿（meituan-paotui Skill CLI 工具调用，两步确认下单），SSE 流式返回 |
 | POST | `/api/weather/chat` | 天气查询（Open-Meteo 工具调用，免凭据），SSE 流式返回 |
 | POST | `/api/recharge/chat` | 话费充值（演示模拟数据，A2UI 表单 + 两步确认充值），SSE 流式返回 |
+| POST | `/api/waimai/chat` | 外卖点餐（演示模拟数据，规格弹窗选好后发大模型，A2UI 表单 + 两步确认下单），SSE 流式返回 |
 
 `POST /api/chat` 请求体：
 
