@@ -543,7 +543,7 @@ function WaimaiCard({ card, onBrowse }) {
                     进店选购 ›
                   </button>
                 </div>
-                <button className="wm-pick" onClick={() => openSheet(s)}>选这个</button>
+                <button className="wm-choose" onClick={() => openSheet(s)}>选这个</button>
               </div>
             ))}
           </div>
@@ -647,7 +647,13 @@ function WaimaiCard({ card, onBrowse }) {
                   <button onClick={() => setQty(Math.min(9, qty + 1))}>+</button>
                 </div>
               </div>
-              <button className="wm-pick" onClick={confirmSheet}>选好了</button>
+              <div className="wm-sheet-foot">
+                <div className="wm-foot-price">
+                  <b>¥{specPrice * qty}</b>
+                  <em>合计 · 已选 {qty} 份</em>
+                </div>
+                <button className="wm-pick" onClick={confirmSheet}>选好了</button>
+              </div>
             </div>
           </div>
         )}

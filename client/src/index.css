@@ -1718,7 +1718,8 @@ body {
   color: inherit;
 }
 
-.wm-pick {
+/* 商品卡上的「选这个」：淡色次级按钮 */
+.wm-choose {
   padding: 8px 0;
   border: none;
   border-radius: 10px;
@@ -1727,10 +1728,67 @@ body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.wm-choose:hover {
+  background: rgba(59, 130, 246, 0.24);
+}
+
+/* 弹窗底部操作栏：合计价 + 主色 CTA，sticky 贴底随内容滚动吸附 */
+.wm-sheet-foot {
+  position: sticky;
+  bottom: -16px; /* 越过弹窗 padding 贴住滚动底部 */
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 14px -16px -16px;
+  padding: 12px 16px 16px;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+
+.wm-foot-price {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.wm-foot-price b {
+  font-size: 18px;
+  color: #e05252;
+}
+
+.wm-foot-price em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+/* 弹窗主 CTA「选好了」：渐变实色大按钮 */
+.wm-pick {
+  flex: 1;
+  padding: 11px 0;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(108, 92, 231, 0.35);
+  transition: filter 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
 .wm-pick:hover {
-  background: rgba(59, 130, 246, 0.24);
+  filter: brightness(1.07);
+  box-shadow: 0 8px 20px rgba(108, 92, 231, 0.45);
+}
+
+.wm-pick:active {
+  transform: scale(0.97);
 }
 
 .wm-deal {
