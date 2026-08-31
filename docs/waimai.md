@@ -67,11 +67,13 @@ waimai.py
 | 工具 | 入参 | 行为 | 返回卡片 |
 |------|------|------|----------|
 | `waimai_search_shops` | `keyword`（可空） | 按品类/店名/菜品名匹配商家，空关键词返回推荐商家；附招牌菜（名称/推荐语/预估价） | `kind=shops` 横滑商家商品卡 |
-| `waimai_menu` | `shop_id` | 返回该商家全部菜品（名称/价格/月售/图标/规格组 specs） | `kind=menu` 菜单卡片 |
-| `waimai_order` | `shop_id`, `items[]`(含 `specs?`), `address`, `phone`, `remark?`, `confirm` | `confirm=false` 预览金额明细；`confirm=true` 提交生成订单 | 预览无卡片；提交返回 `kind=result` |
+| `waimai_menu` | `shop_id`（商家 id **或店名**） | 返回该商家全部菜品（名称/价格/月售/图标/规格组 specs）；店名直查免搜索 | `kind=menu` 菜单卡片 |
+| `waimai_order` | `shop_id`（商家 id **或店名**）, `items[]`(含 `specs?`), `address`, `phone`, `remark?`, `confirm` | `confirm=false` 预览金额明细；`confirm=true` 提交生成订单 | 预览无卡片；提交返回 `kind=result` |
 | `waimai_order_status` | `order_no` | 查询订单状态（内存记账 + 时间流转） | `kind=result` 订单卡片 |
 
 所有工具执行均返回二元组 `(给模型的数据, 给前端的卡片)`；异常在 `execute_tool` 兜底为 `{'error': ...}`，避免中断 agent 循环。
+
+> **shop_id 双解析**：`waimai_menu`/`waimai_order` 的 shop_id 由 `_resolve_shop()` 解析，先按商家 id 后按店名（均精确匹配）——用户消息/弹窗已明确店名时模型可直接传店名，无需先 `waimai_search_shops`，省去一轮工具调用；找不到时返回错误引导搜索。
 
 ### 3.3 模拟数据设计
 

@@ -200,6 +200,15 @@ SHOPS = [
 ]
 
 _SHOP_MENU_INDEX = {s['id']: s for s in SHOPS}
+_SHOP_NAME_INDEX = {s['name']: s for s in SHOPS}
+
+
+def _resolve_shop(value):
+    """按商家 id 或店名解析商家（均精确匹配，先 id 后店名）；找不到返回 None"""
+    value = str(value or '').strip()
+    if not value:
+        return None
+    return _SHOP_MENU_INDEX.get(value) or _SHOP_NAME_INDEX.get(value)
 
 
 def _stable_num(text: str) -> int:
@@ -425,7 +434,7 @@ WAIMAI_TOOLS = [
         'input_schema': {
             'type': 'object',
             'properties': {
-                'shop_id': {'type': 'string', 'description': '商家 id（waimai_search_shops 返回）'},
+                'shop_id': {'type': 'string', 'description': '商家 id 或店名（优先用 waimai_search_shops 返回的 id；用户消息已明确店名时可直接传店名）'},
             },
             'required': ['shop_id'],
         },
@@ -438,7 +447,7 @@ WAIMAI_TOOLS = [
         'input_schema': {
             'type': 'object',
             'properties': {
-                'shop_id': {'type': 'string', 'description': '商家 id（waimai_search_shops 返回）'},
+                'shop_id': {'type': 'string', 'description': '商家 id 或店名（优先用 waimai_search_shops 返回的 id；用户消息已明确店名时可直接传店名）'},
                 'items': {
                     'type': 'array',
                     'description': '购买清单，每项 {name, price, quantity, specs?}，'
@@ -501,7 +510,7 @@ def build_waimai_system_prompt() -> str:
         '① 用户说出想吃什么后先用 waimai_search_shops 搜索（关键词可用品类如"奶茶""汉堡"，或店名）。'
         '正文用简短引导语（参考："已为你找到附近 N 家黄焖鸡米饭店铺，请看看有没有心仪的：你可以直接告诉我想选哪家店，'
         '或者需要我帮你推荐一下？"），挑 1~2 家做简评（招牌菜/评分），不要罗列全部字段。\n'
-        '② 用户选定商家后 waimai_menu 获取菜单，与用户确认要买的菜品和数量。'
+        '② 用户选定商家后 waimai_menu 获取菜单（shop_id 可直接传店名），与用户确认要买的菜品和数量。'
         '若所选菜品带规格组（specs），生成规格选择表单（A2UI）：顶部用 Text 展示菜名与价格，'
         '每个规格组用一个 ChoicePicker（label 用组名，options 的 value 必须用菜单返回的选项原文，'
         'label 可附加价如"大份（+3.00 元）"），底部按钮 action name 为 submit_waimai_order（文案"选好了"），'
@@ -513,14 +522,15 @@ def build_waimai_system_prompt() -> str:
         '备注（可选）用 TextField，底部按钮 action name 为 submit_waimai_order（文案"提交"）。\n'
         '④ 收到规格表单或点餐信息表单的 [A2UI_EVENT] 提交后，直接用提交内容组装 items 与收货信息'
         '调 waimai_order confirm=false 预览（菜品 specs 传选项原文数组，如 ["大份","微辣","可乐"]），不得再次生成相同表单，'
-        '也不得再调 waimai_search_shops / waimai_menu（商家 shop_id 与菜单从历史工具结果中取；进入下单流程后不再展示商家/菜品卡片）。\n'
+        '也不得再调 waimai_search_shops / waimai_menu（shop_id 可直接传用户消息中的店名；进入下单流程后不再展示商家/菜品卡片）。\n'
         '⑤ 预览成功后生成费用确认表单（A2UI）：用 Text 逐行展示订单明细'
         '（商家/菜品与规格/餐盒费/配送费/满减优惠/合计/送达时间"立即配送，预计约 30 分钟后送达"/配送地址/联系电话/备注），'
         '下方两个按钮：confirm_waimai（primary，文案"确认下单"）与 cancel_waimai（secondary，文案"取消"）。\n'
         '⑥ 用户点击"确认下单"后 waimai_order confirm=true 提交，'
         '正文风格参考："好的，已为你选好商品并提交订单，共优惠 X 元，预计 30 分钟送达。"'
         '用户询问订单进展时用 waimai_order_status 查询并告知最新状态（商家备餐中/骑手配送中/已送达）。\n'
-        '【参数规范】items 中每个菜品的 name 与 price 必须取 waimai_menu 返回值（price 单位元），'
+        '【参数规范】shop_id 支持商家 id 或店名：用户消息已明确店名时直接传店名，无需先 waimai_search_shops；'
+        'items 中每个菜品的 name 与 price 必须取 waimai_menu 返回值（price 单位元），'
         'quantity 为正整数；specs 数组必须取菜单规格选项的原文（不含加价后缀），每组至多一项。\n'
         '用户偏好纯文字交流时按文字流程进行（逐项确认菜品、规格、地址与电话，预览与确认门控不变）。\n'
         '工具返回错误时按错误信息说明原因并给出替代建议。'
@@ -566,9 +576,9 @@ class WaimaiService:
         }
 
     async def _exec_menu(self, args: dict):
-        shop = _SHOP_MENU_INDEX.get(str(args.get('shop_id', '')).strip())
+        shop = _resolve_shop(args.get('shop_id'))
         if not shop:
-            return {'error': '未找到该商家，请用 waimai_search_shops 重新搜索'}, None
+            return {'error': '未找到该商家（可传商家 id 或店名），请用 waimai_search_shops 搜索后重试'}, None
         summary = _shop_summary(shop)
         dishes = [_dish_out(shop, d) for d in shop['menu']]
         card = {
@@ -586,9 +596,9 @@ class WaimaiService:
         return {**card, 'notice': '演示模拟数据，无真实交易'}, card
 
     async def _exec_order(self, args: dict):
-        shop = _SHOP_MENU_INDEX.get(str(args.get('shop_id', '')).strip())
+        shop = _resolve_shop(args.get('shop_id'))
         if not shop:
-            return {'error': '未找到该商家，请用 waimai_search_shops 重新搜索'}, None
+            return {'error': '未找到该商家（可传商家 id 或店名），请用 waimai_search_shops 搜索后重试'}, None
         items, err = _validate_items(args.get('items'), shop)
         if err:
             return {'error': err}, None
