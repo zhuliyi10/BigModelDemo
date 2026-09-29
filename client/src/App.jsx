@@ -728,10 +728,10 @@ export default function App() {
   const [models, setModels] = useState(FALLBACK_MODELS);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [loading, setLoading] = useState(false);
-  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询；recharge = 话费充值；waimai = 外卖点餐
+  // 交互模式：chat = 纯文本问答；a2ui = 可交互界面；assistant = 通用智能助手（聚合全部场景工具自动路由）；agent = 出行助手；travel = 美团酒旅；paotui = 美团跑腿；weather = 天气查询；recharge = 话费充值；waimai = 外卖点餐
   const [mode, setMode] = useState('chat');
-  const agentLike = mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather' || mode === 'recharge' || mode === 'waimai';
-  const a2uiLike = mode === 'a2ui' || mode === 'recharge' || mode === 'paotui' || mode === 'waimai';
+  const agentLike = mode === 'assistant' || mode === 'agent' || mode === 'travel' || mode === 'paotui' || mode === 'weather' || mode === 'recharge' || mode === 'waimai';
+  const a2uiLike = mode === 'a2ui' || mode === 'assistant' || mode === 'recharge' || mode === 'paotui' || mode === 'waimai';
   const abortRef = useRef(null);
   const listRef = useRef(null);
   const inputRef = useRef(null);
@@ -807,21 +807,23 @@ export default function App() {
 
     try {
       const endpoint =
-        mode === 'a2ui'
-          ? '/api/a2ui/chat'
-          : mode === 'agent'
-            ? '/api/agent/chat'
-            : mode === 'travel'
-              ? '/api/travel/chat'
-              : mode === 'paotui'
-                ? '/api/paotui/chat'
-                : mode === 'weather'
-                  ? '/api/weather/chat'
-                  : mode === 'recharge'
-                    ? '/api/recharge/chat'
-                    : mode === 'waimai'
-                      ? '/api/waimai/chat'
-                      : '/api/chat';
+        mode === 'assistant'
+          ? '/api/assistant/chat'
+          : mode === 'a2ui'
+            ? '/api/a2ui/chat'
+            : mode === 'agent'
+              ? '/api/agent/chat'
+              : mode === 'travel'
+                ? '/api/travel/chat'
+                : mode === 'paotui'
+                  ? '/api/paotui/chat'
+                  : mode === 'weather'
+                    ? '/api/weather/chat'
+                    : mode === 'recharge'
+                      ? '/api/recharge/chat'
+                      : mode === 'waimai'
+                        ? '/api/waimai/chat'
+                        : '/api/chat';
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -950,6 +952,9 @@ export default function App() {
         <div className="mode-tabs">
           <button className={`mode-tab${mode === 'chat' ? ' active' : ''}`} onClick={() => switchMode('chat')} disabled={loading}>
             文本对话
+          </button>
+          <button className={`mode-tab${mode === 'assistant' ? ' active' : ''}`} onClick={() => switchMode('assistant')} disabled={loading}>
+            🤖 通用助手
           </button>
           <button className={`mode-tab${mode === 'a2ui' ? ' active' : ''}`} onClick={() => switchMode('a2ui')} disabled={loading}>
             ⚡ A2UI 场景

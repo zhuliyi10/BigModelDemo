@@ -11,6 +11,7 @@
 - POST /api/weather/chat 天气查询问答（Open-Meteo 工具调用，免凭据）
 - POST /api/recharge/chat 话费充值问答（演示模拟数据，A2UI 表单 + 两步确认充值）
 - POST /api/waimai/chat  外卖点餐问答（演示模拟数据，A2UI 表单 + 两步确认下单）
+- POST /api/assistant/chat 通用智能助手问答（聚合全部场景服务，模型自动识别意图路由到对应场景工具）
 """
 
 import asyncio
@@ -26,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from amap import AmapService
+from assistant import AssistantService
 from mttravel import TravelService
 from paotui import PaotuiService
 from recharge import RechargeService
@@ -179,10 +181,10 @@ updateComponents 完整示例（注意：components 必须包含一个根容器 
 当用户消息以 "[A2UI_EVENT]" 开头时，表示用户刚在界面上完成操作，消息中包含界面提交的 JSON 数据：请基于数据直接给出简短的中文确认或处理结果，用普通文本（可用 Markdown）回复，不要再生成界面。"""
 
 
-# ---------- 出行助手 / 美团酒旅 / 美团跑腿 / 天气查询 / 话费充值 / 外卖点餐模式 ----------
+# ---------- 出行助手 / 美团酒旅 / 美团跑腿 / 天气查询 / 话费充值 / 外卖点餐 / 通用助手模式 ----------
 # 服务封装分别在 amap.py（AmapService）、mttravel.py（TravelService）、
 # paotui.py（PaotuiService）、weather.py（WeatherService）、recharge.py（RechargeService）、
-# waimai.py（WaimaiService）。
+# waimai.py（WaimaiService）；assistant.py（AssistantService）聚合以上全部服务做意图路由。
 # 模型只决定"何时调用、传什么参数"；服务端真正请求第三方 API 并回写 tool_result；
 # 前端根据服务端下发的结构化数据渲染路线/POI/酒旅/天气/充值/外卖卡片。
 amap = AmapService()
@@ -191,6 +193,10 @@ paotui = PaotuiService()
 weather = WeatherService()
 recharge = RechargeService()
 waimai = WaimaiService()
+assistant = AssistantService([
+    ('weather', weather), ('recharge', recharge), ('waimai', waimai),
+    ('amap', amap), ('travel', travel), ('paotui', paotui),
+])
 
 
 def sse_event(obj) -> str:
@@ -526,6 +532,25 @@ async def waimai_chat(request: Request):
     # 叠加 A2UI 协议提示词：点餐场景用表单收集地址/电话/备注、费用确认
     system = build_a2ui_system_prompt() + '\n\n' + waimai.system_prompt()
     return agent_stream(body, waimai, system)
+
+
+@app.post('/api/assistant/chat')
+async def assistant_chat(request: Request):
+    """通用智能助手接口：聚合全部场景服务为一个单入口 agent，模型自动识别意图
+    （天气/充值/外卖/跑腿/酒旅/出行）并路由到对应场景工具，无需用户切换场景；
+    未配置凭据的场景（如未填 AMAP_KEY）自动从工具面剔除"""
+    body = await request.json()
+    messages = body.get('messages')
+    if not isinstance(messages, list) or not messages:
+        return JSONResponse({'error': 'messages 不能为空'}, status_code=400)
+    err = missing_llm_config()
+    if err:
+        return err
+    if not assistant.configured:
+        return JSONResponse({'error': '通用助手无可用场景服务'}, status_code=500)
+    # 叠加 A2UI 协议提示词：充值/外卖/跑腿场景的表单收集与费用确认在通用场景照常生效
+    system = build_a2ui_system_prompt() + '\n\n' + assistant.system_prompt
+    return agent_stream(body, assistant, system)
 
 
 if __name__ == '__main__':

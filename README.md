@@ -5,6 +5,7 @@
 ## 功能特性
 
 - 💬 多轮对话，AI 回复**流式逐字渲染**
+- 🤖 **通用助手**：单入口智能体自动识别意图（天气 / 充值 / 外卖 / 跑腿 / 酒旅 / 出行），聚合全部场景工具自动路由，多需求一条消息串联完成，安全门控照常生效
 - ⚡ **A2UI 场景**：AI 按 A2UI 协议实时生成可交互界面（表单、点单、预订），填写后一键提交
 - 🗺 **出行助手**：AI 以工具调用方式查询高德地图（地理编码 / POI / 路线规划），附交互式路线卡片
 - 🏨 **美团酒旅**：AI 调用官方美团酒旅 Skill（`meituan-travel`，景点/酒店/机票/火车票/门票/行程规划），真实供给数据，个人开发者 Token 即可接入
@@ -34,6 +35,7 @@
 BigModelDemo/
 ├── package.json            # 根配置，统一启动脚本（前端 npm workspace + 后端 uvicorn）
 ├── docs/
+│   ├── assistant.md        # 通用智能助手（聚合全部场景）实现文档
 │   ├── recharge.md         # 充话费场景实现文档
 │   ├── waimai.md           # 外卖点餐场景实现文档
 │   ├── paotui.md           # 美团跑腿场景实现文档
@@ -42,7 +44,8 @@ BigModelDemo/
 │   ├── weather.md          # 天气查询场景实现文档（Open-Meteo）
 │   └── a2ui.md             # A2UI 可交互界面场景实现文档
 ├── server/                 # 后端代理服务（FastAPI，默认端口 3001）
-│   ├── main.py             # FastAPI 服务：/api/chat、/api/a2ui/chat、/api/agent/chat、/api/travel/chat、/api/paotui/chat、/api/weather/chat、/api/recharge/chat、/api/waimai/chat、/api/models
+│   ├── main.py             # FastAPI 服务：/api/chat、/api/assistant/chat、/api/a2ui/chat、/api/agent/chat、/api/travel/chat、/api/paotui/chat、/api/weather/chat、/api/recharge/chat、/api/waimai/chat、/api/models
+│   ├── assistant.py        # 通用智能助手（组合服务：聚合全部场景工具做意图路由，未配置凭据的场景自动剔除）
 │   ├── amap.py             # 高德 Web 服务封装（出行助手工具执行器）
 │   ├── mttravel.py         # 美团酒旅 Skill 封装（mttravel CLI 工具执行器）
 │   ├── paotui.py           # 美团跑腿 Skill 封装（paotui.js CLI 执行器，两步确认下单）
@@ -134,6 +137,7 @@ npm run dev:client   # 前端 http://localhost:5173
 | GET | `/api/health` | 健康检查 |
 | GET | `/api/models` | 透传网关模型列表（`/v1/models`） |
 | POST | `/api/chat` | 问答接口，SSE 流式返回 |
+| POST | `/api/assistant/chat` | 通用智能助手（聚合全部场景工具，自动意图路由），SSE 流式返回 |
 | POST | `/api/a2ui/chat` | A2UI 场景问答（注入 A2UI 系统提示词） |
 | POST | `/api/agent/chat` | 出行助手（高德工具调用循环），SSE 流式返回 |
 | POST | `/api/travel/chat` | 美团酒旅（meituan-travel Skill CLI 工具调用），SSE 流式返回 |
